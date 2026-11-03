@@ -1,0 +1,21 @@
+# 第三方说明
+
+本项目的许可见 [LICENSE](LICENSE)。以下归属说明及上游许可与项目许可一并保留。
+
+## rpg-extract 格式参考
+
+`Tools/append_rgss3a.py` 参考了 [xi/rpg-extract](https://github.com/xi/rpg-extract) 中的 RGSS3A 格式实现，包括索引 XOR 和每四字节载荷密钥递推。为保守保留参考来源的归属与许可，本仓库附带上游完整 MIT 许可及版权声明，见 [LICENSE-rpg-extract.txt](LICENSE-rpg-extract.txt)。
+
+本次通过公开 GitHub API 核对并固定的上游版本为 `d33337a51b89bf59d6eca91ea8f39203a635dab6`：
+
+- [格式参考实现 rpg_extract.py](https://github.com/xi/rpg-extract/blob/d33337a51b89bf59d6eca91ea8f39203a635dab6/rpg_extract.py)
+- [对应版本 LICENSE](https://github.com/xi/rpg-extract/blob/d33337a51b89bf59d6eca91ea8f39203a635dab6/LICENSE)
+- [提交记录](https://github.com/xi/rpg-extract/commit/d33337a51b89bf59d6eca91ea8f39203a635dab6)
+
+该提交是本次核对的固定参考版本，不声称还原最初开发时使用的版本。保留来源说明不代表对其余代码作整体原创性声明，也不表示上游作者认可本项目。
+
+## 外部运行环境与资产
+
+Wine、Wineskin、Ren’Py、RPG Maker、Unity、Steam、VNDB 等名称用于说明互操作对象。相关商标、第三方软件与服务保留各自权利。
+
+仓库不分发游戏二进制、游戏数据、第三方引擎或 SDK、运行包、封面图片与字体。这些内容不受本项目 MIT 许可授权；使用者应自行合法取得，并遵守相应许可或服务条款。本仓库中的程序化图标源码不包含上述第三方图像资产。
