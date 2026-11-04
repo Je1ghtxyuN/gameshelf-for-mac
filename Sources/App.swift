@@ -380,7 +380,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
       next.record(self.add(source,candidates[0]))
      }else {
       self.showStatus("正在导入 \(current.processed+1)/\(current.total)：等待选择「\(source.lastPathComponent)」的启动入口…")
-      let alert=NSAlert();alert.messageText="选择此游戏的启动入口";alert.informativeText="此后会自动使用所选入口。"
+      let alert=NSAlert();alert.messageText="选择此游戏的启动入口";alert.informativeText="请选择平时使用的入口；带中文或汉化标记的入口会优先列出。此后会自动使用所选入口。\n识别引擎："+Array(Set(candidates.map{$0.engine})).sorted().joined(separator:"、")
       let popup=NSPopUpButton(frame:NSRect(x:0,y:0,width:400,height:28));popup.addItems(withTitles:candidates.map{$0.path});alert.accessoryView=popup;alert.addButton(withTitle:"添加");alert.addButton(withTitle:"取消")
       if alert.runModal() == .alertFirstButtonReturn{next.record(self.add(source,candidates[popup.indexOfSelectedItem]))}else{next.record(.cancelled)}
      }

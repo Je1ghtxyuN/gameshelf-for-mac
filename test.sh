@@ -6,7 +6,9 @@ node_bin="$(command -v node)"
 mkdir -p build/module-cache
 run_swift() {
  local name="$1"; shift
- swiftc -swift-version 5 -module-cache-path build/module-cache "$@" "Tests/${name}Tests.swift" -o "build/${name}Tests"
+ local sources=("$@")
+ case " $* " in *" Sources/Core.swift "*) sources+=(Sources/VisualNovelProbe.swift);; esac
+ swiftc -swift-version 5 -module-cache-path build/module-cache "${sources[@]}" "Tests/${name}Tests.swift" -o "build/${name}Tests"
  "build/${name}Tests"
 }
 for name in Core Storage Runtime Safety NativeEngine RTP RPGDictionary GameResourceServer; do
@@ -23,3 +25,6 @@ run_swift PlaytimeStore Sources/PlaytimeStore.swift
 run_swift PlaytimeRecorder Sources/PlaytimeStore.swift Sources/PlaytimeRecorder.swift
 "$node_bin" --test Tests/MZSaveMigrationTests.js Tests/MZSaveBootstrapTests.js
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests -p test_renpy_save_migration.py -q
+
+run_swift VisualNovelProbe Sources/VisualNovelProbe.swift
+run_swift VisualNovelImport Sources/Core.swift

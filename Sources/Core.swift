@@ -51,19 +51,22 @@ enum Scan {
   else if names.contains("game.rgssad"){engine="RPG Maker XP"}
   else if names.contains("rpg_rt.ldb"){engine="RPG Maker 2000/2003"}
   else if names.contains("unityplayer.dll") || names.contains(where:{$0.hasSuffix("_data")}){engine="Unity"}
+  else if let detected=VisualNovelProbe.engine(at:root){engine=detected}
   else if names.contains("nscript.dat") || names.contains("0.txt"){engine="NScripter / ONScripter"}
   let excluded=["unins","uninstall","unitycrashhandler","crashreport","dxsetup","vcredist","vc_redist","dotnet","setup","installer","config","custom"]
   let exe=children.filter { u in
    let n=u.lastPathComponent.lowercased()
-   guard n.hasSuffix(".exe"),!excluded.contains(where:{n.hasPrefix($0)}) else{return false}
+   guard n.hasSuffix(".exe"),!excluded.contains(where:{n.hasPrefix($0)}),!VisualNovelProbe.isAuxiliaryExecutable(u.lastPathComponent) else{return false}
    guard let handle=try? FileHandle(forReadingFrom:u) else{return false}
    defer{try? handle.close()}
    return (try? handle.read(upToCount:2)) == Data([0x4d,0x5a])
-  }.sorted{$0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending}
-  if engine=="RPG Maker MZ",has("index.html"),exe.contains(where:{$0.lastPathComponent=="Game.exe"}),MZWebProfile.matches(at:root) {
+  }
+  let ordered=VisualNovelProbe.orderedExecutables(exe.map{$0.lastPathComponent})
+  let executables=ordered.map{root.appendingPathComponent($0)}
+  if engine=="RPG Maker MZ",has("index.html"),executables.contains(where:{$0.lastPathComponent=="Game.exe"}),MZWebProfile.matches(at:root) {
    return [Candidate(path:"Game.exe",backend:.rpgmz,engine:engine)]
   }
-  if !exe.isEmpty{return exe.map{Candidate(path:$0.lastPathComponent,backend:engine=="Ren’Py" ? .renpy:.wine,engine:engine)}}
+  if !executables.isEmpty{return executables.map{Candidate(path:$0.lastPathComponent,backend:engine=="Ren’Py" ? .renpy:.wine,engine:engine)}}
   let apps=children.filter{$0.pathExtension.lowercased()=="app"}
   if !apps.isEmpty{return apps.map{Candidate(path:$0.lastPathComponent,backend:.native,engine:"macOS")}}
   // Desktop NW.js packages may depend on Node: never silently execute them as a browser export.
@@ -195,7 +198,10 @@ final class LibraryStore {
   let entry=folder.appendingPathComponent(candidate.path).standardizedFileURL
   guard entry.path==folder.path || entry.path.hasPrefix(folder.path+"/") else {throw LibraryError("游戏入口超出所选目录。")}
   guard fm.fileExists(atPath:entry.path) else {throw LibraryError("找不到游戏入口，NAS 可能已断开。")}
-  if let g=games.first(where:{$0.originalFolder==folder.path && $0.entry==candidate}) {return g}
+  if var g=games.first(where:{$0.originalFolder==folder.path && $0.entry.path==candidate.path && $0.entry.backend==candidate.backend}) {
+   if g.entry != candidate{g.entry=candidate;try update(g)}
+   return g
+  }
   let g=Game(title:folder.pathExtension.lowercased()=="app" ? folder.deletingPathExtension().lastPathComponent : folder.lastPathComponent,folder:folder.path,originalFolder:folder.path,entry:candidate,windowSize:candidate.backend == .wine ? "1280x720":nil)
   games.append(g)
   do {try save()} catch {games.removeLast();throw error}

@@ -22,12 +22,13 @@ GameShelf brings your games into a native macOS library. Import a folder from yo
 
 **[Download the latest release](https://github.com/Je1ghtxyuN/gameshelf-for-mac/releases/latest)** · macOS 15+ · Apple Silicon
 
-Open `GameShelf-v1.0.0-macOS-arm64.dmg` and drag **GameShelf.app** onto the **Applications** shortcut. A ZIP download is also available.
+Open `GameShelf-v1.0.1-macOS-arm64.dmg` and drag **GameShelf.app** onto the **Applications** shortcut. A ZIP download is also available.
 
 ## Features
 
 - **One library** — organize Windows, native macOS, visual novel, and 2D games with covers and custom collections.
 - **Import in place** — keep game files on a local disk, an external drive, or a mounted NAS. Download a local copy when you want to play offline.
+- **Visual novel imports** — identify QLIE, CatSystem2, KiriKiri and NScripter markers, keep configuration utilities out of the launcher list, and put translated launchers first.
 - **Choose your entry point** — select the translated launcher when a game has several executables; GameShelf remembers the choice.
 - **Flexible launch paths** — use Wine/Wineskin for Windows games, native macOS apps, Ren’Py engine adapters, or embedded WebKit for HTML games.
 - **Playtime at a glance** — see total playtime below each cover, with recent sessions in **Properties → Play history**.

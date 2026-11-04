@@ -22,12 +22,13 @@ GameShelf 是一款原生 macOS 游戏兼容与管理客户端。导入 Mac、�
 
 **[下载最新版本](https://github.com/Je1ghtxyuN/gameshelf-for-mac/releases/latest)** · macOS 15+ · Apple Silicon
 
-打开 `GameShelf-v1.0.0-macOS-arm64.dmg`，将 **GameShelf.app** 拖到 **Applications（应用程序）** 快捷方式上。也提供 ZIP 压缩包下载。
+打开 `GameShelf-v1.0.1-macOS-arm64.dmg`，将 **GameShelf.app** 拖到 **Applications（应用程序）** 快捷方式上。也提供 ZIP 压缩包下载。
 
 ## 功能
 
 - **统一游戏库**：通过封面和自定义分类，整理 Windows、原生 Mac、视觉小说和 2D 游戏。
 - **原位置导入**：游戏可保留在本地磁盘、外置盘或已挂载的 NAS，也可以下载一份本地副本供离线游玩。
+- **视觉小说导入**：识别 QLIE、CatSystem2、吉里吉里和 NScripter 特征，过滤设置工具，并优先显示汉化启动入口。
 - **绑定启动入口**：存在多个可执行文件时，可选择平时使用的汉化启动器，之后直接启动。
 - **多种运行方式**：Windows 游戏使用 Wine/Wineskin，Mac 游戏直接运行，并提供 Ren’Py 引擎适配与 HTML 游戏的 WebKit 内嵌运行。
 - **游玩时长**：封面下显示累计时长，在 **属性 → 游玩记录** 中查看最近会话。

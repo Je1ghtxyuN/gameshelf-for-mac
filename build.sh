@@ -9,7 +9,7 @@ mkdir -p build/module-cache "$app/Contents/MacOS" "$app/Contents/Resources/Tools
 swift -module-cache-path build/module-cache Tools/Icon.swift build/AppIcon.iconset
 iconutil -c icns build/AppIcon.iconset -o "$app/Contents/Resources/GameShelfIcon.icns"
 swiftc -swift-version 5 -O -module-cache-path build/module-cache -target "${arch}-apple-macosx15.0" -framework AppKit -framework WebKit \
- Sources/Core.swift Sources/Runtime.swift Sources/NativeEngines.swift Sources/RTP.swift Sources/RPGDictionary.swift Sources/GameResourceServer.swift Sources/CoverArt.swift Sources/MZSaveMigration.swift Sources/NativeAppCache.swift Sources/NativeGameSaves.swift Sources/UnityCursorAdapter.swift Sources/PlaytimeStore.swift Sources/PlaytimeRecorder.swift Sources/GameProperties.swift Sources/SettingsModel.swift Sources/SettingsWindow.swift Sources/App.swift \
+ Sources/Core.swift Sources/VisualNovelProbe.swift Sources/Runtime.swift Sources/NativeEngines.swift Sources/RTP.swift Sources/RPGDictionary.swift Sources/GameResourceServer.swift Sources/CoverArt.swift Sources/MZSaveMigration.swift Sources/NativeAppCache.swift Sources/NativeGameSaves.swift Sources/UnityCursorAdapter.swift Sources/PlaytimeStore.swift Sources/PlaytimeRecorder.swift Sources/GameProperties.swift Sources/SettingsModel.swift Sources/SettingsWindow.swift Sources/App.swift \
  -o "$app/Contents/MacOS/GameShelf"
 for tool in prepare_rgss_dictionary.rb append_rgss3a.py migrate_mz_saves.js migrate_renpy_saves.py; do
  cp "Tools/$tool" "$app/Contents/Resources/Tools/$tool"
@@ -24,8 +24,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleDisplayName</key><string>GameShelf</string>
 <key>CFBundleExecutable</key><string>GameShelf</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.0.0</string>
-<key>CFBundleVersion</key><string>13</string>
+<key>CFBundleShortVersionString</key><string>1.0.1</string>
+<key>CFBundleVersion</key><string>14</string>
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSNetworkVolumesUsageDescription</key><string>读取您导入的网络卷游戏文件夹。</string>
