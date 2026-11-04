@@ -63,6 +63,8 @@ NAS 游戏会保留在原目录。游玩时保持共享目录挂载，断开后�
 python3 Tools/migrate_renpy_saves.py --help
 ```
 
+项目维护者：[Je1ghtxyuN](https://github.com/Je1ghtxyuN)。
+
 ## 许可与致谢
 
 [MIT 许可证](LICENSE) · [第三方说明](THIRD_PARTY_NOTICES.md) · [隐私说明](PRIVACY.md)

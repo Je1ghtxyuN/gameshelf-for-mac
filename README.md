@@ -63,6 +63,8 @@ For the standalone Ren’Py save migration tool:
 python3 Tools/migrate_renpy_saves.py --help
 ```
 
+Maintained by [Je1ghtxyuN](https://github.com/Je1ghtxyuN).
+
 ## License & credits
 
 [MIT](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Privacy](PRIVACY.md)
