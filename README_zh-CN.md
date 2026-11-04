@@ -22,7 +22,7 @@ GameShelf 是一款原生 macOS 游戏兼容与管理客户端。导入 Mac、�
 
 **[下载最新版本](https://github.com/Je1ghtxyuN/gameshelf-for-mac/releases/latest)** · macOS 15+ · Apple Silicon
 
-解压 `GameShelf-v1.0.0-macOS-arm64.zip`，将 **GameShelf.app** 拖入 **应用程序**。
+打开 `GameShelf-v1.0.0-macOS-arm64.dmg`，将 **GameShelf.app** 拖到 **Applications（应用程序）** 快捷方式上。也提供 ZIP 压缩包下载。
 
 ## 功能
 
@@ -52,6 +52,7 @@ NAS 游戏会保留在原目录。游玩时保持共享目录挂载，断开后�
 ```sh
 ./build.sh
 ./test.sh
+./package-dmg.sh
 ```
 
 构建产物为 `dist/GameShelf.app`，使用本地临时签名。可通过 `ARCH=arm64 ./build.sh` 指定 Apple Silicon；开发构建也提供 `ARCH=x86_64` 选项。测试使用自动生成的样本和临时目录。

@@ -22,7 +22,7 @@ GameShelf brings your games into a native macOS library. Import a folder from yo
 
 **[Download the latest release](https://github.com/Je1ghtxyuN/gameshelf-for-mac/releases/latest)** · macOS 15+ · Apple Silicon
 
-Unzip `GameShelf-v1.0.0-macOS-arm64.zip` and drag **GameShelf.app** into **Applications**.
+Open `GameShelf-v1.0.0-macOS-arm64.dmg` and drag **GameShelf.app** onto the **Applications** shortcut. A ZIP download is also available.
 
 ## Features
 
@@ -52,6 +52,7 @@ Install Apple Command Line Tools, Python 3.10+, Ruby, and Node.js 20+, then run:
 ```sh
 ./build.sh
 ./test.sh
+./package-dmg.sh
 ```
 
 The app is built at `dist/GameShelf.app` with a local ad-hoc signature. `ARCH=arm64 ./build.sh` explicitly selects Apple Silicon; `ARCH=x86_64` is also available for development builds. Tests use generated fixtures and temporary directories.

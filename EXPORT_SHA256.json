@@ -3,8 +3,8 @@
   "LICENSE": "d6fde9a856cbf661d42c86844263d85a04ffaf13434a9aa8cc1e49fe345bddc5",
   "LICENSE-rpg-extract.txt": "87015432f6c687ab1cc4fbeef3e984f06d955895d37e561c289d80d54334c647",
   "PRIVACY.md": "62b30e62cc20e588129d750d0cc44fac2782e0e82f2a0541a19c29c35216c55c",
-  "README.md": "12a247cfbf89921718903335ddd7eeeceae537268e893eb329d527e38c6db481",
-  "README_zh-CN.md": "b51b8fe1746a8c6061b875e5cf0b7541cbecabe06224334d5e93c1e5593b1097",
+  "README.md": "6d7f165845aeedf42e37100c289af74f604c2d365a86d7a965d95b9c9e3f9c82",
+  "README_zh-CN.md": "834f79308afdce4d0ce5a75d8d0cc8d6dec6195dffc8b5ba0d76d7bc0a28dd35",
   "Sources/App.swift": "dc6677ab15ed38a956deb3e6687cfc493aaab67652c46023fd84f037b5385fe6",
   "Sources/Core.swift": "c829ee495280a6fed78b6eacf58b49a0f34c4817416f2a988b3fb080f2d9a60f",
   "Sources/CoverArt.swift": "7ec7df62b6df03de0960c66f95526d1c067964229bcb13c24ef0fb6d745d468c",
@@ -52,6 +52,7 @@
   "Tools/migrate_renpy_saves.py": "f7559746279f2c0544ed83dd89d850a055edde4d6a08b5024563649e493171a2",
   "Tools/prepare_rgss_dictionary.rb": "92e8eafc3557bc9af771d72820ce2e2238117cb560c5c31a0d00716f3e35893e",
   "build.sh": "566ee2b7ea6e82c748598171ae0ea4dd39fadd4d6687376e833c94506739ee8d",
-  "export-manifest.json": "3a3a37cf4152b8980415ca91965afc15251d0590c024258ac6ce1daa70c6ac04",
+  "export-manifest.json": "0c72e27b58d649496e96633fba51a00d7468cbad7245ece24058a93f5dca6a61",
+  "package-dmg.sh": "b2a2deb95544f982546a5ff92adf0a814f62e4078f3cdf88df9aa12530264e0c",
   "test.sh": "ae28c741d0d9c75537399d44a34f773ae89f33d5472530de53d53694431ba92b"
 }
