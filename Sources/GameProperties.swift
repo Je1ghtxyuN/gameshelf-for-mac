@@ -199,13 +199,18 @@ final class GamePropertiesController: NSWindowController, NSWindowDelegate {
    feedback = status
    add(status)
    checkbox("收藏此游戏", on: game.favorite) { [weak self] value in self?.update { $0.favorite = value } }
+   if let shared=game.shared {
+    section("游戏来源",value:"共享游戏库")
+    if let connection=try? SharedConnectionStore(root:app.root).connections.first(where:{$0.id==shared.connectionID}){section("服务器与账号",value:connection.name+" · "+connection.username)}
+    add(text("游戏资源通过网络读取，存档与配置使用此账号的独立空间。",secondary:true))
+   }
    let separator = NSBox(); separator.boxType = .separator; add(separator)
    add(text("从游戏库移除后，原游戏、本地副本、运行环境与存档均保留。", secondary: true))
    button("从游戏库移除…", enabled: !blocked) { [weak self] in self?.removeEntry() }
   case 1:
    let renpy = game.entry.backend == .renpy || (game.entry.backend == .wine && game.entry.engine == "Ren’Py")
    let nativeRenpy = renpy && app.nativeRenpyRoot(game) != nil
-   let usesWine = (game.entry.backend == .wine || game.entry.backend == .renpy) && !nativeRenpy
+   let usesWine = ((game.entry.backend == .wine || game.entry.backend == .renpy) && !nativeRenpy) || (game.shared != nil && game.entry.backend == .rpgmz)
    let modes: [Backend: String] = [.wine: "Wine / Wineskin · 独立窗口", .native: "macOS · 独立窗口", .renpy: "原生 Ren’Py · 独立窗口", .web: "WebKit · 内嵌画面", .rpgmz: "原生 RPG Maker MZ · 内嵌画面"]
    section("运行方式", value: modes[usesWine ? .wine : (nativeRenpy ? .renpy : game.entry.backend)] ?? game.entry.backend.rawValue)
    section("引擎", value: game.entry.engine)
@@ -213,7 +218,7 @@ final class GamePropertiesController: NSWindowController, NSWindowDelegate {
    button("查看运行日志", enabled: !blocked) { [weak self] in self?.perform { $0.showGameLogs($1) } }
    if let language=game.nativeLanguage{section("启动语言",value:"简体中文（"+language+"）")}
    if usesWine {
-    section("此游戏的运行环境位置", value: app.runtimeRoot.appendingPathComponent("Runtimes/" + gameID.uuidString + ".app").path)
+    section("此游戏的运行环境位置", value: app.runtimeDataRoot(for:game).appendingPathComponent("Runtimes/" + gameID.uuidString + ".app").path)
     section("Wine 环境来源", value: UserDefaults.standard.string(forKey: "WineSource") ?? Wrapper.defaultSource.path)
     add(text("以下设置在下次启动时生效。游戏运行时，请先在游戏内保存并退出，再更改设置。", secondary: true))
     if running { add(text("游戏仍在运行，请先退出游戏。", secondary: true)) }
@@ -232,18 +237,20 @@ final class GamePropertiesController: NSWindowController, NSWindowDelegate {
     add(text("已识别的 Ren’Py / Godot 只缓存程序和运行库，game / PCK 游戏资源通过链接读取原目录。", secondary:true))
    }
    let local = app.store.root.appendingPathComponent("Games").appendingPathComponent(gameID.uuidString).standardizedFileURL.path
-   section("本地副本位置", value: local)
-   add(text(game.folder == local ? "当前使用本地副本。" : "当前引用游戏目录；下载会复制到本地并切换运行位置，保留原件。", secondary: true))
+   if game.shared == nil {
+    section("本地副本位置", value: local)
+    add(text(game.folder == local ? "当前使用本地副本。" : "当前引用游戏目录；下载会复制到本地并切换运行位置，保留原件。", secondary: true))
+   }else{add(text("游戏在启动时挂载到此位置。大资源保留在服务器；个人写入由服务器独立保存。",secondary:true))}
    button("在 Finder 中显示当前目录") { [weak self] in
     guard let game = self?.game else { return }
     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: game.folder)])
    }
-   button("显示原始目录") { [weak self] in
+   button("显示原始目录", enabled:game.shared==nil) { [weak self] in
     guard let game = self?.game else { return }
     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: game.originalFolder)])
    }
-   button("重新定位文件夹…", enabled: !blocked) { [weak self] in self?.perform(requireStopped: true) { $0.relocate($1) } }
-   button("下载到本地…", enabled: !blocked && game.folder != local) { [weak self] in self?.perform(requireStopped: true) { $0.download($1) } }
+   button("重新定位文件夹…", enabled: !blocked && game.shared==nil) { [weak self] in self?.perform(requireStopped: true) { $0.relocate($1) } }
+   button("下载到本地…", enabled: !blocked && game.shared==nil && game.folder != local) { [weak self] in self?.perform(requireStopped: true) { $0.download($1) } }
   case 3:
    if let cover = game.cover, let image = NSImage(contentsOfFile: cover) {
     let preview = NSImageView(image: image)

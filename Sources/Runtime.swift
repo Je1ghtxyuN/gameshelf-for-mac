@@ -4,9 +4,15 @@ enum Wrapper {
  static var defaultSource:URL {
   FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Steambuild 32 64bit DXVK.app")
  }
- static func prepare(game:Game,source:URL,destination:URL,shareEngine:Bool=false) throws -> URL {
+ static func prepare(game:Game,source:URL,destination:URL,shareEngine:Bool=false,freshPrefix:Bool=false) throws -> URL {
   try EntryPolicy.validate(game.entry)
   let fm=FileManager.default
+  guard !freshPrefix || shareEngine else{throw LibraryError("全新共享环境需要独立 prefix 与共享引擎。")}
+  let existed=fm.fileExists(atPath:destination.path)
+  if existed && freshPrefix {
+   let info=destination.appendingPathComponent("Contents/Info.plist")
+   guard let data=try? Data(contentsOf:info),let values=try? PropertyListSerialization.propertyList(from:data,format:nil) as? [String:Any],values["GameShelfFreshPrefix"] as? Bool==true else{throw LibraryError("此共享环境由旧版模板复制生成，未继续使用。请保留旧环境并创建全新的账号运行目录。")}
+  }
   let executable=URL(fileURLWithPath:game.folder).appendingPathComponent(game.entry.path)
   guard fm.fileExists(atPath:executable.path) else {throw LibraryError("游戏文件不可用。请连接 NAS，或在游戏菜单中重新定位。")}
   guard fm.fileExists(atPath:source.appendingPathComponent("Contents/MacOS/wineskinlauncher").path) else {throw LibraryError("找不到 Wineskin 运行环境。请在应用设置中选择已有的 Wineskin .app。")}
@@ -34,7 +40,16 @@ enum Wrapper {
      let link=name=="wine" ? support.appendingPathComponent(name):contents.appendingPathComponent(name)
      try fm.createSymbolicLink(atPath:link.path,withDestinationPath:target.path)
     }
-    try fm.copyItem(at:source.appendingPathComponent("Contents/SharedSupport/prefix"),to:support.appendingPathComponent("prefix"))
+    if freshPrefix {
+     let prefix=support.appendingPathComponent("prefix")
+     try fm.createDirectory(at:prefix.appendingPathComponent("drive_c"),withIntermediateDirectories:true)
+     try fm.createDirectory(at:prefix.appendingPathComponent("dosdevices"),withIntermediateDirectories:true)
+     // Adding G: before wineboot makes dosdevices nonempty, so Wine no longer
+     // supplies these default drive links itself. Seed only empty drive layout.
+     try fm.createSymbolicLink(atPath:prefix.appendingPathComponent("dosdevices/c:").path,withDestinationPath:"../drive_c")
+     try fm.createSymbolicLink(atPath:prefix.appendingPathComponent("dosdevices/z:").path,withDestinationPath:"/")
+    }
+    else{try fm.copyItem(at:source.appendingPathComponent("Contents/SharedSupport/prefix"),to:support.appendingPathComponent("prefix"))}
    } else {
     let process=Process();process.executableURL=URL(fileURLWithPath:"/bin/cp");process.arguments=["-cR",source.path,staging.path]
     let err=Pipe();process.standardError=err
@@ -64,6 +79,7 @@ enum Wrapper {
   plist["CFBundleName"]="GameShelf Runtime"
   plist["Fullscreen"]=false;plist["Use XQuartz"]=false;plist["Debug Mode"]=true
   plist["WINEDEBUG"]="-all,+err"
+  if freshPrefix{plist["GameShelfFreshPrefix"]=true}
   // Logs aid troubleshooting, but detected engine does not imply a verified playable game.
   let data=try PropertyListSerialization.data(fromPropertyList:plist,format:.xml,options:0)
   try data.write(to:plistURL,options:.atomic)
@@ -74,19 +90,35 @@ enum Wrapper {
   path==root || path.hasPrefix(root+"/")
  }
 
+ private static func resolvedWritablePath(_ url:URL)->String {
+  // Foundation normalizes existing /private/tmp paths to /tmp, but leaves a
+  // not-yet-created child unchanged. Resolve the nearest existing ancestor
+  // first so containment checks use the same spelling for both.
+  let fm=FileManager.default
+  var ancestor=url,tail:[String]=[]
+  while !fm.fileExists(atPath:ancestor.path),
+        (try? fm.destinationOfSymbolicLink(atPath:ancestor.path)) == nil,
+        ancestor.path != "/" {
+   tail.insert(ancestor.lastPathComponent,at:0)
+   ancestor=ancestor.deletingLastPathComponent()
+  }
+  let base=ancestor.resolvingSymlinksInPath().standardizedFileURL.path
+  return ([base]+tail).joined(separator:"/")
+ }
+
  private static func validateWritableLinks(runtime:URL,sourcePrefixes:[URL]) throws {
   let fm=FileManager.default
-  let root=runtime.resolvingSymlinksInPath().standardizedFileURL.path
+  let root=resolvedWritablePath(runtime)
   let prefix=runtime.appendingPathComponent("Contents/SharedSupport/prefix")
   // These directories/files are written by GameShelf or Wine itself. Host drive and
   // user-folder mappings below the prefix are intentionally handled separately.
   for relative in ["Contents/Info.plist","Contents/SharedSupport/Cache","Contents/SharedSupport/Logs","Contents/SharedSupport/prefix","Contents/SharedSupport/prefix/dosdevices","Contents/SharedSupport/prefix/drive_c","Contents/SharedSupport/prefix/drive_c/GameShelf","Contents/SharedSupport/prefix/drive_c/GameShelf/launch.bat"] {
-   let resolved=runtime.appendingPathComponent(relative).resolvingSymlinksInPath().standardizedFileURL.path
+   let resolved=resolvedWritablePath(runtime.appendingPathComponent(relative))
    guard resolved.hasPrefix(root+"/") else {throw LibraryError("运行副本包含指向外部的可写链接，已停止以保护原环境："+relative)}
   }
-  let prefixRoot=prefix.resolvingSymlinksInPath().standardizedFileURL.path
+  let prefixRoot=resolvedWritablePath(prefix)
   for relative in ["dosdevices/c:","user.reg","system.reg","userdef.reg"] {
-   let resolved=prefix.appendingPathComponent(relative).resolvingSymlinksInPath().standardizedFileURL.path
+   let resolved=resolvedWritablePath(prefix.appendingPathComponent(relative))
    guard containsPath(resolved,in:prefixRoot) else {throw LibraryError("运行副本的 C: 或注册表指向外部："+relative)}
   }
   let originals=sourcePrefixes.flatMap{[$0.standardizedFileURL.path,$0.resolvingSymlinksInPath().standardizedFileURL.path]}
@@ -183,6 +215,12 @@ extension Wrapper {
   environment["DXVK_HUD"]=game.showPerformanceHUD==true ? "fps,frametimes,gpuload,compiler":"0"
   environment["WINEDEBUG"]="-all,err+all,+msgbox"
   environment["WINEDLLOVERRIDES"]="winemenubuilder.exe=d"
+  if game.shared != nil {
+   // Wine-side Unix helpers also receive an account-private home. Caches remain
+   // local; no environment variable points them at another account's user data.
+   environment["HOME"]=directory.appendingPathComponent(".gameshelf-profile/UnixHome").path
+   environment["XDG_CACHE_HOME"]=runtime.appendingPathComponent("Contents/SharedSupport/Cache/XDG").path
+  }
   environment.removeValue(forKey:"GAMESHELF_WINDOW_BOUNDS")
   let prefix=runtime.appendingPathComponent("Contents/SharedSupport/prefix")
   let inode=(try? FileManager.default.attributesOfItem(atPath:prefix.path)[.systemFileNumber] as? NSNumber)?.uint64Value

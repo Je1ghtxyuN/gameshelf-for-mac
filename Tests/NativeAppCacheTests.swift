@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 import CryptoKit
 
-// Standalone: swiftc Sources/Core.swift Sources/NativeAppCache.swift Tests/NativeAppCacheTests.swift -o /private/tmp/native-cache-tests
+// Standalone: compile Core, VisualNovelProbe, NativeAppIdentity and NativeAppCache with this file.
 @main struct NativeAppCacheTests {
  static var fm: FileManager { FileManager.default }
  final class HashProbe: @unchecked Sendable {

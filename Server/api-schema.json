@@ -1,0 +1,504 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GameShelf gateway API v1 (HTTPS, Bearer tokens, no CORS)",
+  "description": "All timestamps are Unix seconds (JSON number). IDs are opaque strings. Paths are relative POSIX paths within the mounted share. Fields not known by clients may be ignored. No HTTP token is an SMB password.",
+  "$defs": {
+    "user": {
+      "type": "object",
+      "required": [
+        "id",
+        "username",
+        "admin"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        },
+        "admin": {
+          "type": "boolean"
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "required": [
+        "path",
+        "backend",
+        "engine"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "backend": {
+          "enum": [
+            "wine",
+            "native",
+            "renpy",
+            "web",
+            "rpgmz"
+          ],
+          "description": "rpgmz is offered only for the validated MZWebProfile.sakura desktop profile, as index.html before preserved Wine entrances. Unknown NW.js packages are not promoted to WebKit."
+        },
+        "engine": {
+          "type": "string"
+        }
+      }
+    },
+    "game": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "entries"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entry"
+          }
+        },
+        "savePaths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/saveRule"
+          }
+        },
+        "saveIsolation": {
+          "type": "string"
+        }
+      }
+    },
+    "share": {
+      "type": "object",
+      "required": [
+        "host",
+        "port",
+        "name",
+        "username",
+        "password"
+      ],
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "name": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        }
+      }
+    },
+    "login": {
+      "type": "object",
+      "required": [
+        "token",
+        "expiresAt",
+        "user",
+        "serverID"
+      ],
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "number"
+        },
+        "user": {
+          "$ref": "#/$defs/user"
+        },
+        "serverID": {
+          "type": "string"
+        }
+      }
+    },
+    "catalog": {
+      "type": "object",
+      "required": [
+        "games"
+      ],
+      "properties": {
+        "games": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/game"
+          }
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "required": [
+        "leaseID",
+        "expiresAt",
+        "serverID",
+        "userID",
+        "game",
+        "profileKey",
+        "share"
+      ],
+      "properties": {
+        "leaseID": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "number"
+        },
+        "serverID": {
+          "type": "string"
+        },
+        "userID": {
+          "type": "string"
+        },
+        "game": {
+          "$ref": "#/$defs/game"
+        },
+        "profileKey": {
+          "type": "string"
+        },
+        "share": {
+          "$ref": "#/$defs/share"
+        }
+      }
+    },
+    "heartbeat": {
+      "type": "object",
+      "required": [
+        "leaseID",
+        "expiresAt"
+      ],
+      "properties": {
+        "leaseID": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "number"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "saveRule": {
+      "type": "object",
+      "required": [
+        "path",
+        "kind"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Canonical game-relative POSIX path; never .., absolute or .gameshelf-profile"
+        },
+        "kind": {
+          "enum": [
+            "file",
+            "directory"
+          ]
+        }
+      }
+    },
+    "invitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "address"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "address": {
+          "type": "string",
+          "format": "uri",
+          "description": "Explicitly configured HTTPS root URL; no credentials, path, query or fragment."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "certificateSHA256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Optional leaf certificate DER SHA-256; not an SPKI hash."
+        }
+      }
+    }
+  },
+  "endpoints": {
+    "POST /api/login": {
+      "auth": false,
+      "body": {
+        "username": "string",
+        "password": "string"
+      },
+      "response": {
+        "$ref": "#/$defs/login"
+      }
+    },
+    "POST /api/logout": {
+      "body": {},
+      "response": {},
+      "description": "Revokes only current HTTP token and leases created with it. Other tokens/devices are unaffected. 503 means closure pending; current token already revoked. Account disable and grant revocation close all affected leases."
+    },
+    "GET /api/catalog": {
+      "response": {
+        "$ref": "#/$defs/catalog"
+      }
+    },
+    "POST /api/games/{id}/session": {
+      "body": {
+        "deviceID": "string, 1..128 chars"
+      },
+      "response": {
+        "$ref": "#/$defs/session"
+      }
+    },
+    "POST /api/sessions/{leaseID}/heartbeat": {
+      "body": {},
+      "response": {
+        "$ref": "#/$defs/heartbeat"
+      }
+    },
+    "DELETE /api/sessions/{leaseID}": {
+      "response": {}
+    },
+    "GET /api/admin/roots": {
+      "admin": true,
+      "response": {
+        "roots": [
+          {
+            "id": "string",
+            "title": "string",
+            "path": "string"
+          }
+        ]
+      }
+    },
+    "POST /api/admin/roots": {
+      "admin": true,
+      "body": {
+        "path": "absolute path inside configured sources",
+        "title": "string"
+      },
+      "response": {
+        "id": "string",
+        "title": "string",
+        "path": "string"
+      }
+    },
+    "POST /api/admin/roots/{id}/scan": {
+      "admin": true,
+      "body": {},
+      "response": {
+        "complete": "bool",
+        "discovered": "int",
+        "issues": [
+          "string"
+        ]
+      }
+    },
+    "GET /api/admin/candidates": {
+      "admin": true,
+      "response": {
+        "candidates": [
+          {
+            "id": "string",
+            "root_id": "string",
+            "relative": "string",
+            "title": "string",
+            "entries": "entry[]",
+            "signature": "string",
+            "available": "bool",
+            "detectedSavePaths": "saveRule[]"
+          }
+        ]
+      }
+    },
+    "POST /api/admin/candidates/{id}/publish": {
+      "admin": true,
+      "body": {
+        "savePaths": "optional [{path:string,kind:file|directory}]; unioned with detected defaults, immutable per edition"
+      },
+      "response": {
+        "$ref": "#/$defs/game"
+      }
+    },
+    "GET /api/admin/games": {
+      "admin": true,
+      "response": {
+        "games": "game[]"
+      }
+    },
+    "GET /api/admin/users": {
+      "admin": true,
+      "response": {
+        "users": [
+          {
+            "id": "string",
+            "username": "string",
+            "admin": "bool",
+            "disabled": "bool",
+            "uid": "int, gateway only"
+          }
+        ]
+      }
+    },
+    "POST /api/admin/users": {
+      "admin": true,
+      "body": {
+        "username": "ASCII login, 1..64",
+        "password": "12..1024 chars",
+        "admin": "bool optional, defaults false"
+      },
+      "response": {
+        "id": "string",
+        "username": "string",
+        "admin": "bool",
+        "uid": "int"
+      }
+    },
+    "POST /api/admin/users/{id}/disable": {
+      "admin": true,
+      "body": {},
+      "response": {}
+    },
+    "GET /api/admin/grants": {
+      "admin": true,
+      "response": {
+        "grants": [
+          {
+            "userID": "string",
+            "gameID": "string"
+          }
+        ]
+      }
+    },
+    "POST /api/admin/grants": {
+      "admin": true,
+      "body": {
+        "userID": "string",
+        "gameID": "string",
+        "allowed": "bool"
+      },
+      "response": {}
+    },
+    "GET /api/admin/invitation": {
+      "admin": true,
+      "response": {
+        "$ref": "#/$defs/invitation"
+      },
+      "headers": {
+        "Content-Disposition": "attachment; filename=\"gameshelf-invitation.json\"",
+        "Cache-Control": "no-store"
+      },
+      "description": "Credential-free SharedServerInvitation v1. GAMESHELF_PUBLIC_ADDRESS falls back only to configured GAMESHELF_PUBLIC_ORIGIN; never Host/forwarded headers. Optional name comes from GAMESHELF_SERVER_NAME; optional pin from GAMESHELF_CERTIFICATE_SHA256. Missing/invalid invitation configuration returns 503. No tokens, passwords, account IDs, serverID, SMB credentials or source paths."
+    },
+    "GET /api/server-info": {
+      "auth": false,
+      "response": {
+        "name": "string",
+        "serverID": "string",
+        "version": "string"
+      },
+      "description": "Public display identity only; does not enumerate games or accounts."
+    }
+  },
+  "statusCodes": {
+    "200": "success (including creation)",
+    "400": "invalid request/unsafe source",
+    "401": "missing, expired or revoked token/invalid login",
+    "403": "admin required or no game grant",
+    "404": "not found or another account's lease",
+    "409": "active writer/changed edition/expired heartbeat/duplicate user or root",
+    "413": "body exceeds 16 KiB",
+    "415": "JSON required",
+    "429": "login throttled",
+    "503": "unavailable source/mount/export/shutdown pending; never retry a launch without successful lease"
+  },
+  "profile": {
+    "path": ".gameshelf-profile",
+    "scope": "stable server/account/game",
+    "windowsUsers": ".gameshelf-profile/WindowsUsers/Player is the stable shared-account profile across Mac login names. Public and Default use separate real directories. Client-local user links point here; no SMB symlinks required.",
+    "registry": "client account-private; not synchronized by gateway"
+  },
+  "lease": {
+    "defaultSeconds": 90,
+    "recommendedHeartbeatSeconds": 25,
+    "credentials": "fresh gateway-only SMB user/password for every lease; never persisted in HTTP lease database; no NAS credentials",
+    "reassignment": "disable/remove SMB credential, remove share, reload, close-share, unmount WITHOUT lazy/force, then mark closed; failure keeps writer locked"
+  },
+  "seedSavePrivacy": {
+    "defaults": [
+      "root save/saves/savedata",
+      "game/saves",
+      "www/save",
+      "*.sav",
+      "*.save",
+      "*.rpgsave",
+      "*.rmmzsave",
+      "SaveNN.rxdata/rvdata/rvdata2"
+    ],
+    "notDetected": "Arbitrary engine-specific save names require explicit administrator configuration. Generic .dat/.json/.rvdata2 assets remain readable.",
+    "initialization": "First private overlay hides source seed saves using whiteouts/opaque empty dirs; root-private manifest prevents clearing private saves on reopen. Missing/mismatched manifests on existing uppers refuse export.",
+    "links": "Internal symlinks strictly resolved; absolute lower links rewritten in private overlay only; wide links disabled. Source root/ancestors and external/broken/cyclic/special-target links rejected."
+  },
+  "sharedWebKit": {
+    "profile": "MZWebProfile.sakura (same five exact SHA-256 fingerprints as Sources/Core.swift)",
+    "candidate": {
+      "path": "index.html",
+      "backend": "rpgmz",
+      "engine": "RPG Maker MZ"
+    },
+    "requirements": "RPG Maker MZ metadata, a valid MZ-header Game.exe, regular index.html and all five exact profile hashes. No symlink traversal in root, ancestors or profile files.",
+    "readBudget": {
+      "metadataFiles": 5,
+      "maxBytesPerFile": 2097152,
+      "indexHTML": "regular-file check only; no content hash"
+    },
+    "fallback": "Keep all previously eligible Wine/language entrances and platform editions; mismatch, missing, linked, special or oversized metadata never opts into WebKit. Unknown shared web/native engines remain unsupported without a separate supported adapter.",
+    "publication": "Scanning does not change published games. Explicit re-publication may refresh entrances of an unchanged edition while preserving its game ID, grants and private state.",
+    "saveSupport": "Requires the client shared WebKit account/game-private save adapter; this server change recognizes and advertises only the validated profile."
+  }
+}

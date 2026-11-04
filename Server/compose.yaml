@@ -1,0 +1,62 @@
+name: gameshelf-gateway
+services:
+  gateway:
+    build: .
+    init: true
+    restart: unless-stopped
+    # Isolated bridge/PID/mount namespace; never host network, privileged or /dev binds.
+    cap_drop: [ALL]
+    cap_add: [SYS_ADMIN, CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, NET_BIND_SERVICE, MKNOD]
+    security_opt:
+      - no-new-privileges:true
+      # Docker's stock AppArmor policy denies mount even with SYS_ADMIN.
+      # Replace with a reviewed mount-capable local profile where available.
+      - apparmor:unconfined
+    pids_limit: 128
+    mem_limit: 1g
+    stop_grace_period: 45s
+    ports:
+      - "${GAMESHELF_BIND_IP:-127.0.0.1}:${GAMESHELF_HTTPS_PORT:-8787}:8443"
+      - "${GAMESHELF_BIND_IP:-127.0.0.1}:${GAMESHELF_SMB_PORT:-1445}:445"
+    environment:
+      GAMESHELF_STATE: /state
+      GAMESHELF_SERVER_NAME: ${GAMESHELF_SERVER_NAME:-GameShelf}
+      GAMESHELF_SOURCE_ROOTS: '["/sources/library"]'
+      GAMESHELF_BIND: 0.0.0.0
+      GAMESHELF_PORT: '8443'
+      GAMESHELF_SMB_HOST: ${GAMESHELF_SMB_HOST:?Set the gateway DNS name reachable by clients}
+      GAMESHELF_SMB_PORT: ${GAMESHELF_SMB_PORT:-1445}
+      GAMESHELF_TLS_CERT: /tls/server.crt
+      GAMESHELF_TLS_KEY: /tls/server.key
+      GAMESHELF_PUBLIC_ADDRESS: ${GAMESHELF_PUBLIC_ADDRESS:-}
+      GAMESHELF_CERTIFICATE_SHA256: ${GAMESHELF_CERTIFICATE_SHA256:-}
+      GAMESHELF_PUBLIC_ORIGIN: ${GAMESHELF_PUBLIC_ORIGIN:-}
+      GAMESHELF_BOOTSTRAP_USERNAME: ${GAMESHELF_BOOTSTRAP_USERNAME:?Set the initial administrator username}
+      GAMESHELF_BOOTSTRAP_PASSWORD_FILE: /run/secrets/bootstrap_password
+    volumes:
+      - type: bind
+        source: ${GAMESHELF_SOURCE_DIR:?Set a frozen game source directory}
+        target: /sources/library
+        read_only: true
+        bind:
+          create_host_path: false
+          propagation: rprivate
+      - type: bind
+        source: ${GAMESHELF_STATE_DIR:?Set a NEW dedicated ext4 directory outside all sources}
+        target: /state
+        bind:
+          create_host_path: false
+          propagation: rprivate
+      - type: bind
+        source: ${GAMESHELF_TLS_DIR:?Directory containing server.crt and server.key}
+        target: /tls
+        read_only: true
+        bind:
+          create_host_path: false
+    secrets: [bootstrap_password]
+    tmpfs:
+      - /run:rw,nosuid,nodev,noexec,size=32m
+      - /tmp:rw,nosuid,nodev,noexec,size=32m
+secrets:
+  bootstrap_password:
+    file: ${GAMESHELF_BOOTSTRAP_PASSWORD_FILE:?Set path to a private password file outside the repository}

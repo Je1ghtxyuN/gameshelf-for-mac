@@ -17,14 +17,27 @@ done
 run_swift CoverArt Sources/Core.swift Sources/CoverArt.swift
 for name in PreparationTask ImportProgress Collection Rename; do run_swift "$name" Sources/Core.swift; done
 run_swift MZSaveArchive Sources/Core.swift Sources/MZSaveMigration.swift
-run_swift NativeAppCache Sources/Core.swift Sources/NativeAppCache.swift
+run_swift NativeAppCache Sources/Core.swift Sources/NativeAppCache.swift Sources/NativeAppIdentity.swift -framework AppKit
+run_swift NativeAppIdentity Sources/Core.swift Sources/NativeAppCache.swift Sources/NativeAppIdentity.swift -framework AppKit
 run_swift NativeGameSaves Sources/Core.swift Sources/MZSaveMigration.swift Sources/NativeGameSaves.swift
 run_swift UnityCursorAdapter Sources/Core.swift Sources/UnityCursorAdapter.swift
 run_swift SettingsModel Sources/SettingsModel.swift
 run_swift PlaytimeStore Sources/PlaytimeStore.swift
 run_swift PlaytimeRecorder Sources/PlaytimeStore.swift Sources/PlaytimeRecorder.swift
-"$node_bin" --test Tests/MZSaveMigrationTests.js Tests/MZSaveBootstrapTests.js
+"$node_bin" --test Tests/MZSaveMigrationTests.js Tests/MZSaveBootstrapTests.js Tests/SharedWebStorageTests.js
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests -p test_renpy_save_migration.py -q
 
 run_swift VisualNovelProbe Sources/VisualNovelProbe.swift
 run_swift VisualNovelImport Sources/Core.swift
+run_swift LibraryDiscovery Sources/Core.swift Sources/LibraryDiscovery.swift
+run_swift DiscoveryPresentation Sources/Core.swift Sources/DiscoveryPresentation.swift
+run_swift DiscoveryBinding Sources/Core.swift Sources/LibraryDiscovery.swift Sources/DiscoveryBinding.swift
+run_swift NetworkLibraryMount Sources/NetworkLibraryMount.swift
+run_swift SharedLibrary Sources/Core.swift Sources/SharedLibrary.swift
+run_swift SharedInvitation Sources/Core.swift Sources/SharedLibrary.swift
+run_swift SharedProfile Sources/Core.swift Sources/SharedProfile.swift
+run_swift SharedWineRuntime Sources/Core.swift Sources/Runtime.swift Sources/SharedProfile.swift Sources/SharedWineBootstrap.swift
+PYTHONPATH="$PWD/Server" PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Server/tests -p 'test_*.py' -q
+
+run_swift SharedWebSaveStore Sources/SharedWebSaveStore.swift
+run_swift SharedWebKitIntegration Sources/Core.swift Sources/GameResourceServer.swift Sources/SharedWebSaveStore.swift Sources/SharedWebKit.swift

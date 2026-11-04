@@ -19,18 +19,26 @@ final class GameResourceServer {
         let rootFD: Int32
         let token: String
         let port: UInt16
+        let scriptSuffixes: [String: Data]
         let workers = DispatchGroup()
         let acceptDone = DispatchSemaphore(value: 0)
-        init(listener: Int32, root: String, rootFD: Int32, token: String, port: UInt16) {
+        init(listener: Int32, root: String, rootFD: Int32, token: String, port: UInt16, scriptSuffixes: [String: Data]) {
             self.listener = listener; self.root = root; self.rootFD = rootFD
             self.token = token; self.port = port
+            self.scriptSuffixes = scriptSuffixes
         }
         deinit { Darwin.close(rootFD) }
     }
     private let state: State
     var port: UInt16 { state.port }
 
-    init(root: URL, preferredPort: UInt16 = 0) throws {
+    init(root: URL, preferredPort: UInt16 = 0, scriptSuffixes: [String: Data] = [:]) throws {
+        guard scriptSuffixes.count <= 8, scriptSuffixes.values.reduce(0, { $0 + $1.count }) <= 262144,
+              scriptSuffixes.keys.allSatisfy({ path in
+                  path.hasSuffix(".js") && !path.contains("\\") &&
+                  !path.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 }) &&
+                  path.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
+              }) else { throw Failure(status: 400) }
         guard root.isFileURL, let resolved = realpath(root.path, nil) else { throw Failure(status: 403) }
         let path = String(cString: resolved); free(resolved)
         let rootFD = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -57,7 +65,7 @@ final class GameResourceServer {
         var length = socklen_t(MemoryLayout<sockaddr_in>.size)
         guard withUnsafeMutablePointer(to: &addr, { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &length) } }) == 0 else { throw POSIXError(.EIO) }
         state = State(listener: fd, root: path, rootFD: rootFD,
-                      token: random.map { String(format: "%02x", $0) }.joined(), port: UInt16(bigEndian: addr.sin_port))
+                      token: random.map { String(format: "%02x", $0) }.joined(), port: UInt16(bigEndian: addr.sin_port), scriptSuffixes: scriptSuffixes)
         success = true
         let s = state
         DispatchQueue(label: "GameShelf.resources.accept").async { Self.acceptLoop(s) }
@@ -214,7 +222,22 @@ final class GameResourceServer {
             guard target.hasPrefix(prefix), let relative = String(target.dropFirst(prefix.count)).removingPercentEncoding else { throw Failure(status: 403) }
             let file = try openResource(s, relative); defer { Darwin.close(file) }
             var info = stat(); guard fstat(file, &info) == 0 else { throw Failure(status: 500) }
-            let size = Int64(info.st_size)
+            var transformed: Data?
+            if let suffix = s.scriptSuffixes[relative] {
+                guard info.st_size >= 0, info.st_size <= 2 * 1024 * 1024 else { throw Failure(status: 413) }
+                var body = Data(count: Int(info.st_size)), offset = 0
+                while offset < body.count {
+                    let remaining = body.count - offset
+                    let n = body.withUnsafeMutableBytes { buffer in
+                        pread(file, buffer.baseAddress!.advanced(by: offset), remaining, off_t(offset))
+                    }
+                    if n < 0 && errno == EINTR { continue }
+                    guard n > 0 else { throw Failure(status: 500) }
+                    offset += n
+                }
+                body.append(suffix); transformed = body
+            }
+            let size = transformed.map { Int64($0.count) } ?? Int64(info.st_size)
             var low: Int64 = 0, count = size, status = 200
             var response = ["Content-Type": mime(relative), "Accept-Ranges":"bytes"]
             if let range = fields["range"] {
@@ -228,6 +251,10 @@ final class GameResourceServer {
             sentHeader = true
             try send(header(status, response), fd, deadline)
             if request[0] == "HEAD" { return }
+            if let transformed {
+                try send(transformed.subdata(in: Int(low)..<Int(low + count)), fd, deadline)
+                return
+            }
             var chunk = [UInt8](repeating: 0, count: 65536)
             while count > 0 {
                 guard now() < deadline else { return }

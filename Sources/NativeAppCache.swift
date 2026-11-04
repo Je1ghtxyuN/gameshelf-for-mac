@@ -25,6 +25,8 @@ enum NativeAppCache {
   let profile: String
   let payloads: [String]
   var runtimeFingerprint: String?
+  var cachedSignedFingerprint: String?
+  var signingProfile: String?
  }
  private struct BundleInfo {
   let plist: [String: Any]
@@ -255,7 +257,8 @@ enum NativeAppCache {
    throw fail("rsync 失败或准备已取消（\(process.terminationStatus)）：" + String(decoding: output.bytes, as: UTF8.self))
   }
  }
- static func prepare(game: Game, root: URL) throws -> NativeAppLaunch {
+ static func prepare(game: Game, root: URL,
+                     runningCheck: (URL) -> Bool = NativeAppIdentity.isRunning(at:)) throws -> NativeAppLaunch {
   lock.lock(); defer { lock.unlock() }
   guard game.entry.backend == .native else { throw fail("仅支持 native 应用入口。") }
   try EntryPolicy.validate(game.entry)
@@ -301,6 +304,7 @@ enum NativeAppCache {
   let excluded = Set((payloads + windows).map { "Contents/" + $0 })
   let sourceRuntime = try runtimeSnapshot(source, excluding: excluded)
   let expected = try receipt(source, info, game, profile, payloads, sourceRuntime.fingerprint)
+  let requiresSigning = try NativeAppIdentity.isMachO(info.executable)
   let destination = cacheRoot.appendingPathComponent(game.id.uuidString + ".app", isDirectory: true)
   let receiptURL = cacheRoot.appendingPathComponent(game.id.uuidString + ".json")
   let bundleID = "local.gameshelf.native." + game.id.uuidString.lowercased()
@@ -321,16 +325,26 @@ enum NativeAppCache {
     (try? fm.destinationOfSymbolicLink(atPath: destination.appendingPathComponent("Contents/" + path).path)) == source.appendingPathComponent("Contents/" + path).path
    }
    var comparable = saved
+   comparable?.cachedSignedFingerprint = nil
+   comparable?.signingProfile = nil
    if comparable?.runtimeFingerprint == nil { comparable?.runtimeFingerprint = expected.runtimeFingerprint }
    if comparable == expected, linksValid, (try? bundle(destination)) != nil,
       let cachedRuntime = try? runtimeSnapshot(destination, excluding: excluded),
-      cachedRuntime.fingerprint == sourceRuntime.fingerprint {
+      cachedRuntime.fingerprint == (requiresSigning ? saved?.cachedSignedFingerprint : sourceRuntime.fingerprint),
+      !requiresSigning || (saved?.signingProfile == NativeAppIdentity.signingProfile &&
+       (try? NativeAppIdentity.verify(destination, identifier: bundleID, excluding: Set(payloads.map { "Contents/" + $0 }))) != nil) {
     if saved?.runtimeFingerprint == nil {
-     try JSONEncoder().encode(expected).write(to: receiptURL, options: .atomic)
+     var upgraded = saved!; upgraded.runtimeFingerprint = expected.runtimeFingerprint
+     try JSONEncoder().encode(upgraded).write(to: receiptURL, options: .atomic)
     }
     return NativeAppLaunch(app: destination.standardizedFileURL.resolvingSymlinksInPath(), environment: [:], cachedBytes: cachedRuntime.bytes, cached: true)
    }
   } else if exists(receiptURL) && saved == nil { throw fail("现有缓存凭据无法确认归属。") }
+  // Reuse above is read-only for valid signed caches. A refresh must also
+  // respect apps that survived a GameShelf restart and are absent from its UI.
+  if exists(destination), runningCheck(destination) {
+   throw fail("此原生游戏仍在运行，已保留当前缓存。请先在游戏内保存并退出，再更新运行库。")
+  }
   try fm.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
   let stage = cacheRoot.appendingPathComponent(".preparing-" + UUID().uuidString + ".app")
   try fm.createDirectory(at: stage.appendingPathComponent("Contents"), withIntermediateDirectories: true)
@@ -345,20 +359,34 @@ enum NativeAppCache {
   // Never write through a copied plist symlink.
   guard !isLink(stage.appendingPathComponent("Contents/Info.plist")) else { throw fail("缓存 Info.plist 不可为链接。") }
   var newInfo = info.plist; newInfo["CFBundleIdentifier"] = bundleID
+  newInfo["NSNetworkVolumesUsageDescription"] = NativeAppIdentity.networkPurpose
   try PropertyListSerialization.data(fromPropertyList: newInfo, format: .xml, options: 0)
    .write(to: stage.appendingPathComponent("Contents/Info.plist"), options: .atomic)
   _ = try bundle(stage)
   let stagedRuntime = try runtimeSnapshot(stage, excluding: excluded)
-  let bytes = stagedRuntime.bytes
+  var bytes = stagedRuntime.bytes
   guard stagedRuntime.fingerprint == sourceRuntime.fingerprint,
         try receipt(source, bundle(source), game, profile, payloads,
                     runtimeSnapshot(source, excluding: excluded).fingerprint) == expected else {
    throw fail("复制期间源应用发生变化，请重试。")
   }
+  var publishedReceipt = expected
+  if requiresSigning {
+   try NativeAppIdentity.signStaged(stage, identifier: bundleID, excluding: Set(payloads.map { "Contents/" + $0 }))
+   let signedRuntime = try runtimeSnapshot(stage, excluding: excluded)
+   bytes = signedRuntime.bytes
+   publishedReceipt.cachedSignedFingerprint = signedRuntime.fingerprint
+   publishedReceipt.signingProfile = NativeAppIdentity.signingProfile
+  }
   // Preserve stale app AND receipt. Roll back publication on any failure.
   var backup: URL?, backupReceipt: URL?
   do {
    if exists(destination) {
+    // The game may have started while we copied/signed the separate stage.
+    // Refuse before moving either the old app or its receipt.
+    guard !runningCheck(destination) else {
+     throw fail("此原生游戏已在准备期间启动，未替换正在使用的缓存。请退出游戏后重试。")
+    }
     let token = ".previous-" + UUID().uuidString
     let old = cacheRoot.appendingPathComponent(game.id.uuidString + token + ".app")
     try fm.moveItem(at: destination, to: old); backup = old
@@ -368,7 +396,7 @@ enum NativeAppCache {
     }
    }
    try fm.moveItem(at: stage, to: destination)
-   do { try JSONEncoder().encode(expected).write(to: receiptURL, options: .atomic) }
+   do { try JSONEncoder().encode(publishedReceipt).write(to: receiptURL, options: .atomic) }
    catch { try? fm.moveItem(at: destination, to: stage); throw error }
   } catch {
    if let backup, !exists(destination) { try? fm.moveItem(at: backup, to: destination) }

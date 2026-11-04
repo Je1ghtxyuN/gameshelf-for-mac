@@ -70,7 +70,13 @@ final class ShelfView:NSView {
 final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigationDelegate,WKUIDelegate,WKScriptMessageHandler {
  var propertyWindows:[UUID:GamePropertiesController]=[:]
  var settingsWindow:SettingsWindowController?
+ var discoveryWindow:DiscoveryWindowController?
+ var sharedLibraryWindow:SharedLibraryWindowController?
+ var sharedSessions:[UUID:SharedRunningSession]=[:]
+ var sharedAccessTokens:[UUID:String]=[:]
  var saveMigrationPlans:[UUID:MZSaveArchive]=[:]
+ var sharedWebKitSession:SharedWebKitSession?
+ var leavingWebGame=false
  var window:NSWindow!
  var store:LibraryStore!
  var playtime:PlaytimeStore?
@@ -142,7 +148,10 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   a.addItem(withTitle:"设置…",action:#selector(settings),keyEquivalent:",").target=self
   a.addItem(.separator());a.addItem(withTitle:"退出 游戏库",action:#selector(NSApplication.terminate(_:)),keyEquivalent:"q")
   let file=NSMenuItem();menu.addItem(file);let f=NSMenu(title:"文件");file.submenu=f
-  f.addItem(withTitle:"导入游戏…",action:#selector(importPanel),keyEquivalent:"o").target=self
+  f.addItem(withTitle:"扫描游戏…",action:#selector(showDiscovery),keyEquivalent:"o").target=self
+  f.addItem(withTitle:"连接共享游戏库…",action:#selector(showSharedLibrary),keyEquivalent:"k").target=self
+  f.addItem(.separator())
+  f.addItem(withTitle:"手动添加游戏…",action:#selector(importPanel),keyEquivalent:"").target=self
   let edit=NSMenuItem();menu.addItem(edit);let e=NSMenu(title:"编辑");edit.submenu=e
   for (title,action,key) in [("剪切","cut:","x"),("复制","copy:","c"),("粘贴","paste:","v"),("全选","selectAll:","a")]{e.addItem(withTitle:title,action:Selector(action),keyEquivalent:key)}
   let view=NSMenuItem();menu.addItem(view);let v=NSMenu(title:"显示");view.submenu=v
@@ -154,7 +163,10 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  func showLibrary(){
   guard active==nil else{return}
   window.title="游戏库"
-  let shell=ShelfView();shell.dropped={[weak self] urls in self?.importURLs(urls)}
+  let shell=ShelfView();shell.dropped={[weak self] urls in
+   guard let self else{return}
+   if urls.allSatisfy({$0.pathExtension.lowercased() != "exe"}){self.showDiscovery();self.discoveryWindow?.addDirectories(urls)}else{self.importURLs(urls)}
+  }
   window.contentView=shell
   let side=NSView();side.wantsLayer=true;side.layer?.backgroundColor=NSColor(calibratedWhite:0.935,alpha:1).cgColor
   side.widthAnchor.constraint(equalToConstant:240).isActive=true
@@ -192,8 +204,9 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   let title=label(currentFilterTitle(),size:14,weight:.semibold)
   search.placeholderString="搜索游戏";search.delegate=self;search.widthAnchor.constraint(equalToConstant:190).isActive=true;search.focusRingType = .none
   let spacer=NSView();spacer.setContentHuggingPriority(.defaultLow,for:.horizontal)
-  let importButton=ActionButton("导入游戏"){[weak self] in self?.importPanel()};importButton.image=NSImage(systemSymbolName:"plus",accessibilityDescription:nil);importButton.imagePosition = .imageLeading;importButton.controlSize = .large
-  let top=stack(filter=="all" ? [title,spacer,search,importButton]:[title,spacer,search],spacing:18)
+  let importButton=ActionButton("添加游戏库"){[weak self] in self?.showDiscovery()};importButton.image=NSImage(systemSymbolName:"folder.badge.plus",accessibilityDescription:nil);importButton.imagePosition = .imageLeading;importButton.controlSize = .large
+  let sharedButton=ActionButton("共享库"){[weak self] in self?.showSharedLibrary()};sharedButton.image=NSImage(systemSymbolName:"network",accessibilityDescription:nil);sharedButton.imagePosition = .imageLeading
+  let top=stack(filter=="all" ? [title,spacer,search,sharedButton,importButton]:[title,spacer,search],spacing:18)
   let topWrap=NSView();pin(top,to:topWrap,inset:22);topWrap.heightAnchor.constraint(equalToConstant:70).isActive=true
   let line=NSBox();line.boxType = .separator
   let scroll=NSScrollView();scroll.hasVerticalScroller=true;scroll.drawsBackground=false
@@ -322,11 +335,11 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
    let image=NSImageView(image:NSImage(systemSymbolName:symbol,accessibilityDescription:nil)!)
    image.contentTintColor=NSColor(calibratedWhite:0.68,alpha:1);image.symbolConfiguration = .init(pointSize:44,weight:.ultraLight)
    image.heightAnchor.constraint(equalToConstant:60).isActive=true
-   let message = searching ? "没有匹配的游戏" : filter=="recent" ? "还没有游玩记录" : filter=="favorite" ? "还没有收藏的游戏" : filter=="all" ? "你的游戏，从这里开始" : "此分类还没有游戏"
+   let message = searching ? "没有匹配的游戏" : filter=="recent" ? "暂无游玩记录" : filter=="favorite" ? "暂无收藏" : filter=="all" ? "暂无游戏" : "分类为空"
    let title=label(message,size:23,weight:.semibold)
    var elements:[NSView]=[image,title]
    if welcome {
-    let action=ActionButton("导入游戏"){[weak self] in self?.importPanel()};action.controlSize = .large;elements.append(action)
+    let action=ActionButton("添加游戏库文件夹"){[weak self] in self?.showDiscovery()};action.controlSize = .large;elements.append(action)
    }else if !searching {
     let hint=label(filter=="recent" ? "从「所有游戏」启动游戏后，会显示在这里。":filter=="favorite" ? "在游戏的「⋯」菜单中选择收藏。":"在游戏的「⋯」菜单中选择「管理分类」。",size:13);hint.textColor = .secondaryLabelColor;elements.append(hint)
    }
@@ -359,7 +372,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  }
  @objc func importPanel(){
   guard !busy,active==nil else{return}
-  let panel=NSOpenPanel();panel.title="选择游戏文件夹或可执行文件";panel.message="默认仅记录原位置，不复制游戏。支持选择已挂载 NAS 中的文件夹。";panel.canChooseDirectories=true;panel.canChooseFiles=true;panel.allowsMultipleSelection=true
+  let panel=NSOpenPanel();panel.title="选择游戏文件夹或可执行文件";panel.canChooseDirectories=true;panel.canChooseFiles=true;panel.allowsMultipleSelection=true
   panel.beginSheetModal(for:window){[weak self] result in if result == .OK {self?.importURLs(panel.urls)}}
  }
  func importURLs(_ urls:[URL],progress:ImportProgress?=nil){
@@ -394,7 +407,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  func advanceImport(_ urls:[URL],progress:ImportProgress){
   let remaining=Array(urls.dropFirst())
   if !remaining.isEmpty{setBusy(false,"");importURLs(remaining,progress:progress)}
-  else{setBusy(false,progress.summary+(progress.added+progress.existing>0 ? " 点击游戏的「启动」即可游玩。":""))}
+  else{setBusy(false,progress.summary)}
  }
  @discardableResult func add(_ source:URL,_ candidate:Candidate)->ImportProgress.Outcome{do{
   showStatus("正在登记「\(source.lastPathComponent)」到游戏库…")
@@ -454,7 +467,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  func refreshPlaytimeLabels(){for(id,label) in playtimeLabels{label.stringValue=playtimeText(id)}}
  func checkpointPlaytime(){
   let ended=nativeApplications.filter{$0.value.isTerminated}.map{$0.key}
-  for id in ended{endPlaytime(id);nativeApplications.removeValue(forKey:id)}
+  for id in ended{endPlaytime(id);nativeApplications.removeValue(forKey:id);releaseShared(id)}
   playtimeOperation{try $0.checkpoint()};flushPlaytimeError()
  }
  @objc func playtimeWillSleep(){playtimeOperation{try $0.pause()}}
@@ -462,11 +475,16 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  @objc func playtimeApplicationEnded(_ notification:Notification){
   guard let ended=notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else{return}
   let ids=nativeApplications.filter{$0.value.processIdentifier==ended.processIdentifier}.map{$0.key}
-  for id in ids{endPlaytime(id);nativeApplications.removeValue(forKey:id)}
+  for id in ids{endPlaytime(id);nativeApplications.removeValue(forKey:id);releaseShared(id)}
  }
  func markPlayed(_ game:Game){guard store.games.contains(where:{$0.id==game.id}) else{return};do{try store.recordPlayed(game.id)}catch{errorAlert(error)}}
  func launch(_ game:Game){
   guard !busy,active==nil else{return}
+  if game.shared != nil,let session=sharedSessions[game.id],session.closing || session.unmounted {
+   showStatus("上一次共享会话正在关闭，请稍后再启动。");return
+  }
+  if game.shared != nil,sharedSessions[game.id]==nil {launchShared(game);return}
+  if game.shared != nil,[Backend.rpgmz,.web].contains(game.entry.backend) {prepareSharedWeb(game);return}
   let folder=URL(fileURLWithPath:game.folder),entry=URL(fileURLWithPath:game.folder).appendingPathComponent(game.entry.path)
   if game.entry.backend == .rpgmz{prepareMZ(game,entry:entry,folder:folder);return}
   guard FileManager.default.fileExists(atPath:entry.path) else{errorAlert(LibraryError("找不到游戏文件。请确认游戏目录或磁盘可访问；位置：\(game.folder)"));return}
@@ -485,10 +503,23 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  func startNativeApplication(_ game:Game){
   if nativeLaunching.contains(game.id){showStatus("macOS 正在启动或验证此游戏，请勿重复开启。");return}
   if let app=nativeApplications[game.id],!app.isTerminated{app.activate(options:[.activateAllWindows]);return}
-  setBusy(true,"正在准备原生运行库缓存，游戏资源保留在原目录…")
-  let localRoot=root,managedRoot=runtimeRoot
+  let cachedApp=root.appendingPathComponent("NativeApps/"+game.id.uuidString+".app")
+  let sourceApp=URL(fileURLWithPath:game.folder).appendingPathComponent(game.entry.path)
+  if let existing=NativeAppIdentity.runningApplication(at:cachedApp) ?? NativeAppIdentity.runningApplication(at:sourceApp) {
+   // Games can outlive the library process. Adopt the actual app rather than
+   // replacing its runtime or launching a second copy after a client restart.
+   nativeApplications[game.id]=existing;beginPlaytime(game.id);markPlayed(game)
+   existing.activate(options:[.activateAllWindows]);showStatus("游戏已在运行。");return
+  }
+  setBusy(true,"正在准备运行环境…")
+  let localRoot=root
   DispatchQueue.global(qos:.userInitiated).async {
    do {
+    let managedRoot=try self.saveDataRoot(for:game)
+    if game.shared != nil {
+     let sourceApp=URL(fileURLWithPath:game.folder).appendingPathComponent(game.entry.path)
+     guard FileManager.default.fileExists(atPath:sourceApp.appendingPathComponent("Contents/Resources/autorun/renpy/vc_version.py").path) else{throw LibraryError("此原生游戏的账号存档位置尚未适配。请使用已提供的 Windows 入口，或先添加该引擎的存档适配；未在公共用户目录启动。")}
+    }
     let plan=try NativeAppCache.prepare(game:game,root:localRoot)
     let storageID=try NativeGameSaves.storageID(game:game,localRoot:localRoot)
     let autorun=plan.app.appendingPathComponent("Contents/Resources/autorun")
@@ -505,10 +536,10 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
     }
     self.preparationReady {
      let config=NSWorkspace.OpenConfiguration();config.createsNewApplicationInstance=true;config.arguments=arguments;config.environment=environment
-     self.nativeLaunching.insert(game.id);self.setBusy(false,"运行库已准备，已交给 macOS 启动；首次系统验证可能需要等待…")
+     self.nativeLaunching.insert(game.id);self.setBusy(false,"正在启动游戏…")
      NSWorkspace.shared.openApplication(at:plan.app,configuration:config){app,error in DispatchQueue.main.async {
       self.nativeLaunching.remove(game.id);guard !self.quitting else{return};self.setBusy(false,"")
-      if let error{self.errorAlert(error)}else if let app{self.nativeApplications[game.id]=app;self.beginPlaytime(game.id);self.markPlayed(game);self.showStatus(plan.cached ? "已提交原生启动，本地运行库约 \(plan.cachedBytes/1024/1024) MB；游戏资源仍在原目录。":"已提交 macOS 原生启动。")}
+      if let error{self.errorAlert(error)}else if let app{self.nativeApplications[game.id]=app;self.beginPlaytime(game.id);self.markPlayed(game);self.showStatus("已启动「\(game.title)」")}
      }}
     }
    }catch{self.preparationReady{self.setBusy(false,"");self.errorAlert(error)}}
@@ -516,17 +547,21 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  }
  func prepareWine(_ game:Game){
    if wineSessions.contains(game.id) {errorAlert(LibraryError("此游戏仍在运行，请回到游戏窗口。"));return}
-   setBusy(true,"游戏已导入，正在准备首次运行环境，NAS 上可能较慢…")
+   setBusy(true,"正在准备运行环境…")
    let source=URL(fileURLWithPath:UserDefaults.standard.string(forKey:"WineSource") ?? Wrapper.defaultSource.path)
-   guard FileManager.default.fileExists(atPath:runtimeRoot.path) else{setBusy(false,"");errorAlert(LibraryError("运行数据位置不可用，请确认磁盘或共享目录可访问，或在设置中重新选择。"));return}
-   let destination=runtimeRoot.appendingPathComponent("Runtimes/"+game.id.uuidString+".app")
+   let dataRoot=runtimeDataRoot(for:game)
+   guard FileManager.default.fileExists(atPath:dataRoot.path) else{setBusy(false,"");errorAlert(LibraryError("运行数据位置不可用，请确认磁盘或共享目录可访问，或在设置中重新选择。"));return}
+   let destination=dataRoot.appendingPathComponent("Runtimes/"+game.id.uuidString+".app")
    DispatchQueue.global(qos:.userInitiated).async{
     do {
-     let cursorGame=try UnityCursorAdapter.prepareIfEnabled(game:game,dataRoot:self.runtimeRoot)
-     let launchGame=try RPGDictionary.prepareIfNeeded(game:cursorGame,dataRoot:self.runtimeRoot,tools:Bundle.main.resourceURL!.appendingPathComponent("Tools"))
-     self.preparationReady{self.showStatus("游戏已导入，正在创建或检查 Windows 运行环境…")}
-     let app=try Wrapper.prepare(game:launchGame,source:source,destination:destination,shareEngine:true)
-     self.preparationReady{self.showStatus("游戏已导入，正在检查运行所需资源…")}
+     // Shared resources already have a private server view. Local game-specific
+     // adapters must not silently substitute an unscoped source directory.
+     let cursorGame=game.shared == nil ? try UnityCursorAdapter.prepareIfEnabled(game:game,dataRoot:dataRoot):game
+     let launchGame=game.shared == nil ? try RPGDictionary.prepareIfNeeded(game:cursorGame,dataRoot:dataRoot,tools:Bundle.main.resourceURL!.appendingPathComponent("Tools")):cursorGame
+     self.preparationReady{self.showStatus("正在检查运行环境…")}
+     let app=try Wrapper.prepare(game:launchGame,source:source,destination:destination,shareEngine:true,freshPrefix:game.shared != nil)
+     try SharedWineBootstrap.prepare(game:launchGame,runtime:app)
+     self.preparationReady{self.showStatus("正在检查运行组件…")}
      try RTP.register(game:launchGame,runtime:app,root:self.runtimeRoot.appendingPathComponent("Dependencies"))
      self.preparationReady {
       guard !self.quitting else{return}
@@ -543,9 +578,10 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  }
  func startRenpy(_ game:Game){
   if let app=nativeRunning[game.id],app.isRunning {NSRunningApplication(processIdentifier:app.processIdentifier)?.activate(options:[]);return}
-  setBusy(true,"正在加载原生游戏与 NAS 资源…")
+  setBusy(true,"正在加载游戏资源…")
 
-  let data=runtimeRoot
+  let data:URL
+  do{data=try saveDataRoot(for:game)}catch{setBusy(false,"");errorAlert(error);return}
   DispatchQueue.global(qos:.userInitiated).async {
    do {
     guard FileManager.default.fileExists(atPath:data.path) else{throw LibraryError("运行数据目录不可用，请确认磁盘或共享目录可访问。")}
@@ -564,6 +600,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
        DispatchQueue.main.async { self.endPlaytime(game.id,at:endedAt,uptime:endedUptime) }
        self.preparationReady {
         self.nativeRunning.removeValue(forKey:game.id)
+        self.releaseShared(game.id)
         if !self.busy{self.showStatus("游戏进程已结束。")}
         if p.terminationStatus != 0 {self.errorAlert(LibraryError("原生游戏已退出，代码 \(p.terminationStatus)。日志：\(log.path)"))}
        }
@@ -597,6 +634,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
       try? handle.close()
       DispatchQueue.main.async {
        self.endPlaytime(game.id,at:endedAt,uptime:endedUptime);self.running.removeValue(forKey:game.id);self.wineSessions.remove(game.id)
+       self.releaseShared(game.id)
        if !self.busy{self.showStatus("游戏进程已结束。")}
        if status != 0 {self.errorAlert(LibraryError("\(game.title) 已退出，代码 \(status)。请通过游戏菜单查看日志：\(log.lastPathComponent)"))}
       }
@@ -604,7 +642,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
     }
    }
    do{try p.run()}catch{try? handle.close();throw error}
-   running[game.id]=p;wineSessions.insert(game.id);beginPlaytime(game.id);markPlayed(game);setBusy(false,"游戏进程已启动，在独立窗口运行。")
+   running[game.id]=p;wineSessions.insert(game.id);beginPlaytime(game.id);markPlayed(game);setBusy(false,"游戏已启动。")
   }catch{setBusy(false,"");errorAlert(error)}
  }
  func prepareMZ(_ game:Game,entry:URL,folder:URL){
@@ -636,9 +674,13 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
    }
   }
  }
- func playWeb(_ game:Game,entry:URL,folder:URL,hostedEntry:URL?=nil,storageID:UUID?=nil,migration:MZSaveArchive?=nil){
+ func playWeb(_ game:Game,entry:URL,folder:URL,hostedEntry:URL?=nil,storageID:UUID?=nil,migration:MZSaveArchive?=nil,sharedSession:SharedWebKitSession?=nil){
   active=game;window.title=game.title
-  let cfg=WKWebViewConfiguration();cfg.websiteDataStore=WKWebsiteDataStore(forIdentifier:storageID ?? game.id);cfg.mediaTypesRequiringUserActionForPlayback=[]
+  let cfg=WKWebViewConfiguration();cfg.websiteDataStore=sharedSession == nil ? WKWebsiteDataStore(forIdentifier:storageID ?? game.id):WKWebsiteDataStore.nonPersistent();cfg.mediaTypesRequiringUserActionForPlayback=[]
+  if let sharedSession {
+   cfg.userContentController.addScriptMessageHandler(sharedSession,contentWorld:.page,name:SharedWebKitSession.handlerName)
+   cfg.userContentController.addUserScript(WKUserScript(source:sharedSession.documentScript,injectionTime:.atDocumentStart,forMainFrameOnly:true))
+  }
   if hostedEntry != nil {
    // A desktop MZ package defaults to unscaled 1280 CSS pixels in browser mode.
    // Fit once after engine initialization; preserve subsequent F3/fullscreen input.
@@ -655,6 +697,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
    cfg.userContentController.addUserScript(WKUserScript(source:script,injectionTime:.atDocumentEnd,forMainFrameOnly:true))
   }
   let web=WKWebView(frame:.zero,configuration:cfg);web.navigationDelegate=self;web.uiDelegate=self;self.web=web
+  sharedSession?.webView=web
   let back=ActionButton("退出游戏"){[weak self] in self?.leaveGame()}
   let title=label(game.title,size:13,weight:.medium)
   let row=stack([back,title,NSView(),ActionButton("全屏"){[weak self] in self?.window.toggleFullScreen(nil)}],spacing:15)
@@ -711,20 +754,53 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  func webViewWebContentProcessDidTerminate(_ webView:WKWebView){if let id=active?.id{endPlaytime(id)};errorAlert(LibraryError("游戏网页进程已退出。请退出后重新打开，未保存的进度可能丢失。"))}
  func webView(_ webView:WKWebView,decidePolicyFor navigationAction:WKNavigationAction,decisionHandler:@escaping(WKNavigationActionPolicy)->Void){
   guard let u=navigationAction.request.url else{decisionHandler(.cancel);return}
+  if let session=sharedWebKitSession,navigationAction.targetFrame?.isMainFrame != false,!session.accepts(u) {
+   decisionHandler(.cancel)
+   if navigationAction.navigationType == .linkActivated,["https","http"].contains(u.scheme ?? ""){NSWorkspace.shared.open(u)}
+   return
+  }
   if navigationAction.navigationType == .linkActivated, !u.isFileURL {decisionHandler(.cancel);NSWorkspace.shared.open(u);return}
   decisionHandler(.allow)
  }
  func webView(_ webView:WKWebView,runJavaScriptAlertPanelWithMessage message:String,initiatedByFrame frame:WKFrameInfo,completionHandler:@escaping()->Void){let a=NSAlert();a.messageText=active?.title ?? "游戏";a.informativeText=message;a.runModal();completionHandler()}
  func webView(_ webView:WKWebView,runJavaScriptConfirmPanelWithMessage message:String,initiatedByFrame frame:WKFrameInfo,completionHandler:@escaping(Bool)->Void){let a=NSAlert();a.messageText=message;a.addButton(withTitle:"确定");a.addButton(withTitle:"取消");completionHandler(a.runModal() == .alertFirstButtonReturn)}
  func leaveGame(skipSavePrompt:Bool=false){
+  guard !leavingWebGame else{return}
   if !skipSavePrompt {
   let a=NSAlert();a.messageText="退出游戏？";a.informativeText="请先使用游戏内的存档功能；此应用不会保存即时快照。";a.addButton(withTitle:"退出游戏");a.addButton(withTitle:"继续游戏")
   guard a.runModal() == .alertFirstButtonReturn else{return}
   }
-  if let id=active?.id{endPlaytime(id);saveMigrationPlans.removeValue(forKey:id)};web?.configuration.userContentController.removeScriptMessageHandler(forName:"mzSaveMigration");web?.stopLoading();web?.navigationDelegate=nil;web?.uiDelegate=nil;web=nil;gameResourceServer?.stop();gameResourceServer=nil;active=nil;showLibrary()
+  if let session=sharedWebKitSession {
+   leavingWebGame=true;setBusy(true,"正在确认存档写入…")
+   let finish={session.closeAndFlush{[weak self] in self?.finishLeavingWebGame()}}
+   guard let web else{finish();return}
+   web.callAsyncJavaScript("await window.__GameShelfPrepareSharedExit(); return true;",arguments:[:],in:nil,in:.page){[weak self] result in
+    guard let self else{return}
+    if case .failure = result {
+     let alert=NSAlert();alert.messageText="存档写入尚未确认";alert.informativeText="请检查网络后在游戏中重试保存。";alert.addButton(withTitle:"返回游戏");alert.addButton(withTitle:"仍然退出")
+     if alert.runModal() != .alertSecondButtonReturn{self.leavingWebGame=false;self.setBusy(false,"存档尚未确认。");return}
+    }
+    finish()
+   }
+   return
+  }
+  finishLeavingWebGame()
+ }
+ func finishLeavingWebGame(){
+  let id=active?.id
+  if let id{endPlaytime(id);saveMigrationPlans.removeValue(forKey:id)}
+  web?.configuration.userContentController.removeScriptMessageHandler(forName:"mzSaveMigration")
+  web?.configuration.userContentController.removeScriptMessageHandler(forName:SharedWebKitSession.handlerName,contentWorld:.page)
+  web?.stopLoading();web?.navigationDelegate=nil;web?.uiDelegate=nil;web=nil
+  gameResourceServer?.stop();gameResourceServer=nil;sharedWebKitSession=nil;leavingWebGame=false;active=nil
+  setBusy(false,"");showLibrary();if let id{releaseShared(id)}
  }
  func applicationWillTerminate(_ notification:Notification){playtimeTimer?.invalidate();playtimeOperation{try $0.endAll()};NSWorkspace.shared.notificationCenter.removeObserver(self);quitting=true;statusTimer?.invalidate();PreparationTasks.shared.cancel();pendingWebLaunch=nil;gameResourceServer?.stop();gameResourceServer=nil}
  func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply{
+  if !sharedSessions.isEmpty {
+   for id in sharedSessions.keys{releaseShared(id)}
+   let alert=NSAlert();alert.messageText="共享游戏会话尚未关闭";alert.informativeText="请先在游戏内保存退出。GameShelf 会刷新网络写入并关闭个人会话后再退出，避免存档写入中断。";alert.addButton(withTitle:"返回游戏库");alert.runModal();return .terminateCancel
+  }
   if pendingWebLaunch != nil{pendingWebLaunch=nil;busy=false;return .terminateNow}
   if busy {
    let a=NSAlert();a.messageText="停止准备并退出？";a.informativeText="当前任务：\(status?.stringValue ?? "后台准备")\n\n退出会停止未完成的准备或复制。原游戏和已有存档保留；未完成的临时副本不会加入游戏库。"
@@ -745,7 +821,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  }
  func applicationShouldTerminateAfterLastWindowClosed(_ sender:NSApplication)->Bool{true}
  func showGameLogs(_ game:Game){
-  let root=runtimeRoot
+  let root=runtimeDataRoot(for:game)
   let logs=(game.entry.backend == .native || game.entry.backend == .renpy) ? root.appendingPathComponent("Logs/"+game.id.uuidString) : root.appendingPathComponent("Runtimes/"+game.id.uuidString+".app/Contents/SharedSupport/Logs")
   DispatchQueue.global(qos:.userInitiated).async {
    let exists=FileManager.default.fileExists(atPath:logs.path)
@@ -754,6 +830,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  }
  func details(_ game:Game){guard !busy else{return};presentProperties(game)}
  func download(_ game:Game){
+  guard game.shared==nil else{errorAlert(LibraryError("共享游戏按网络资源运行，此入口不会下载整款游戏。"));return}
   if wineSessions.contains(game.id) || (nativeRunning[game.id].map{$0.isRunning} ?? false) || (nativeApplications[game.id].map{!$0.isTerminated} ?? false) || nativeLaunching.contains(game.id){errorAlert(LibraryError("请先退出游戏，再复制到本地。"));return}
   let a=NSAlert();a.messageText="下载到本地？";a.informativeText="将完整复制游戏到 Mac，并切换到本地副本运行。NAS 原文件不变。请先退出此游戏，以免复制到正在写入的存档。复制所需空间与游戏大小相当。";a.addButton(withTitle:"下载");a.addButton(withTitle:"取消")
   guard a.runModal() == .alertFirstButtonReturn else{return}
@@ -809,6 +886,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   }
  }
  func relocate(_ game:Game){
+  guard game.shared==nil else{errorAlert(LibraryError("共享游戏位置由服务器管理。请在共享库中重新连接原服务器和账号。"));return}
   let p=NSOpenPanel();p.title="重新定位游戏文件夹";p.canChooseFiles=false;p.canChooseDirectories=true;p.treatsFilePackagesAsDirectories=true
   p.beginSheetModal(for:window){result in
    guard result == .OK,let u=p.url else{return}

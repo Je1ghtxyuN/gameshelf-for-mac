@@ -86,6 +86,21 @@ enum EntryPolicy {
  }
 }
 struct CopyReceipt:Codable {var id:UUID;var source:String;var entry:Candidate}
+struct SharedGameReference:Codable,Equatable {
+ var connectionID:UUID
+ var serverID:String
+ var accountID:String
+ var gameID:String
+ var storageKey:String {
+  // Length-delimited identity avoids ambiguous concatenations and unsafe paths.
+  let parts=[serverID,accountID,gameID].map{String($0.utf8.count)+":"+$0}.joined()
+  return SHA256.hash(data:Data(parts.utf8)).map{String(format:"%02x",$0)}.joined()
+ }
+ var gameIdentity:UUID {
+  let key=storageKey
+  return UUID(uuidString:"\(key.prefix(8))-\(key.dropFirst(8).prefix(4))-\(key.dropFirst(12).prefix(4))-\(key.dropFirst(16).prefix(4))-\(key.dropFirst(20).prefix(12))")!
+ }
+}
 struct Game: Codable, Identifiable {
  var id:UUID=UUID()
  var title:String
@@ -98,6 +113,7 @@ struct Game: Codable, Identifiable {
  var showPerformanceHUD:Bool?=nil
  var windowSize:String?=nil
  var nativeLanguage:String?=nil
+ var shared:SharedGameReference?=nil
 }
 struct GameCollection:Codable,Identifiable {
  var id:UUID=UUID()

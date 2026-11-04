@@ -129,10 +129,10 @@ import Foundation
    try check(VisualNovelProbe.engine(at: folder) == "QLIE", "sparse archive footer missed")
   }
   test("auxiliary names are narrow and Japanese normalization is canonical") { _ in
-   for name in ["エンジン設定.exe", "エンジン設定.exe".decomposedStringWithCanonicalMapping, "CS2CONF.EXE", "FileCheck.exe", "setup.exe", "unins000.exe", "uninstall.exe", "UnityCrashHandler64.exe", "vc_redist.x64.exe"] {
+   for name in ["エンジン設定.exe", "エンジン設定.exe".decomposedStringWithCanonicalMapping, "CS2CONF.EXE", "FileCheck.exe", "custom.exe", "設定.exe", "设置.exe", "環境設定.exe", "环境设置.exe", "config_jp.exe", "config64.exe", "config-tool.exe", "uninstall_game.exe", "uninstaller.exe", "setup.exe", "unins000.exe", "uninstall.exe", "UnityCrashHandler64.exe", "vc_redist.x64.exe"] {
     try check(VisualNovelProbe.isAuxiliaryExecutable(name), "helper retained: \(name)")
    }
-   for name in ["ConfigurationStory.exe", "custom.exe", "SetupAdventure.exe", "FileCheckerStory.exe", "エンジン設定物語.exe", "cs2conf_story.exe", "Story.exe", "FileCheck.txt"] {
+   for name in ["ConfigurationStory.exe", "CustomAdventure.exe", "config_story.exe", "uninstallAdventure.exe", "设置冒险.exe", "設定物語.exe", "SetupAdventure.exe", "FileCheckerStory.exe", "エンジン設定物語.exe", "cs2conf_story.exe", "Story.exe", "FileCheck.txt"] {
     try check(!VisualNovelProbe.isAuxiliaryExecutable(name), "valid or ambiguous name filtered: \(name)")
    }
   }

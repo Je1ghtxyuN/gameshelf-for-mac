@@ -26,3 +26,6 @@ Saves/
 Runtimes/
 Engines/
 *.app/
+# Local development notes and deployment acceptance records
+docs/superpowers/
+Server/VALIDATION.md

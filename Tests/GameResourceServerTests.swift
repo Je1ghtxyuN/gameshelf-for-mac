@@ -91,11 +91,30 @@ private final class Fixture {
   try burstRequests()
   try pinnedRootFastPath()
   try servingAndRanges()
+  try scriptSuffixes()
   try pathAndProtocolSafety()
   try stableOriginAndShutdown()
   try boundedRequests()
   try stopDuringStreaming()
-  print("PASS: 7 actual-socket resource-server suites: streaming/HEAD/MIME/ranges, isolation/protocol, stable origin/shutdown, bounded requests")
+  print("PASS: 8 actual-socket resource-server suites: streaming/HEAD/MIME/ranges, isolation/protocol, stable origin/shutdown, bounded requests")
+ }
+ static func scriptSuffixes()throws {
+  let f=try Fixture(),file=f.root.appendingPathComponent("adapter.js")
+  let original=Data("window.original=true;".utf8),suffix=Data("\nwindow.accountAdapter=true;".utf8)
+  try original.write(to:file)
+  let server=try GameResourceServer(root:f.root,scriptSuffixes:["adapter.js":suffix]);defer{server.stop()}
+  let entry=try server.entryURL(relativePath:"index.html"),prefix=entry.deletingLastPathComponent().path+"/"
+  let full=try f.request(server,prefix+"adapter.js")
+  try expect(full.status==200 && full.body==original+suffix,"adapter suffix must be served after the actual script")
+  try expect(Int(full.headers["content-length"] ?? "") == original.count+suffix.count,"adapter response size")
+  let partial=try f.request(server,prefix+"adapter.js",headers:"Range: bytes=20-29\r\n")
+  try expect(partial.status==206 && partial.body==Data((original+suffix)[20..<30]),"ranges must use transformed script bytes")
+  let head=try f.request(server,prefix+"adapter.js",method:"HEAD")
+  try expect(head.body.isEmpty && head.headers["content-length"]==String(original.count+suffix.count),"HEAD transformed length")
+  try expect(try Data(contentsOf:file)==original,"serving must not rewrite source script")
+  try rejects("non-script suffix") {_ = try GameResourceServer(root:f.root,scriptSuffixes:["movie.webm":suffix])}
+  try rejects("suffix traversal") {_ = try GameResourceServer(root:f.root,scriptSuffixes:["../adapter.js":suffix])}
+  try rejects("oversize suffix") {_ = try GameResourceServer(root:f.root,scriptSuffixes:["adapter.js":Data(repeating:65,count:262145)])}
  }
  static func servingAndRanges()throws {
   let f=try Fixture(),server=try GameResourceServer(root:f.root);defer{server.stop()}
