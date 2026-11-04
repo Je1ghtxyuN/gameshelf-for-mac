@@ -24,13 +24,17 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleDisplayName</key><string>GameShelf</string>
 <key>CFBundleExecutable</key><string>GameShelf</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>1.0.0</string>
+<key>CFBundleVersion</key><string>13</string>
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSNetworkVolumesUsageDescription</key><string>读取您导入的网络卷游戏文件夹。</string>
 <key>NSRemovableVolumesUsageDescription</key><string>读取您导入的外置磁盘游戏。</string>
 </dict></plist>
 PLIST
+mkdir -p "$app/Contents/Resources/Licenses"
+for notice in LICENSE LICENSE-rpg-extract.txt THIRD_PARTY_NOTICES.md; do
+ cp "$notice" "$app/Contents/Resources/Licenses/$notice"
+done
 codesign --force --sign - "$app"
 echo "Built $app"
