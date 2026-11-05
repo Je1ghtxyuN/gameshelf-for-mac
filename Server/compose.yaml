@@ -46,8 +46,14 @@ services:
           create_host_path: false
           propagation: rprivate
       - type: bind
-        source: ${GAMESHELF_TLS_DIR:?Directory containing server.crt and server.key}
-        target: /tls
+        source: ${GAMESHELF_TLS_DIR:?Directory containing server.crt and server.key}/server.crt
+        target: /tls/server.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${GAMESHELF_TLS_DIR:?Directory containing server.crt and server.key}/server.key
+        target: /tls/server.key
         read_only: true
         bind:
           create_host_path: false

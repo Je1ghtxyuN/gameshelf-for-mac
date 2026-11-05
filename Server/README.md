@@ -224,3 +224,9 @@ Each account may store at most **8** device libraries. `GET /api/personal-librar
 Personal cover GET/POST requires an existing device library and a game UUID present in that account’s current snapshot; unknown device/game returns **404**. Metadata must therefore be uploaded first. Matching UUIDs in another account grant no access. Updating metadata atomically prunes removed games’ cover blobs within the same CAS transaction. With at most 1000 games/library, new cover rows are bounded by 8 × 1000 per account; each image remains at most 256 KiB. Default published-game covers use their separate unchanged authorization routes.
 
 个人封面 GET/POST 必须先有本账号的设备库及快照内游戏；未知对象返回 **404**，须先上传元数据。其他账号即使使用相同 UUID 也无法访问或插入。元数据移除游戏时，在同一次 CAS 事务中删除对应封面。每库最多 1000 个游戏，因此每账号新增封面记录最多 8 × 1000，每张仍限 256 KiB；已发布游戏的默认封面接口不变。
+
+### Storage mount readiness / 存储挂载
+
+Restore the configured storage volume before starting the gateway. Compose binds the existing certificate and key files individually with host-path creation disabled, so an absent volume fails before application startup instead of creating placeholder directories and fresh state. Keep the state directory on its original filesystem; reconnecting an empty mount-point directory is not a replacement for restoring that filesystem.
+
+共享服务启动前应先恢复配置的存储卷。Compose 分别绑定已存在的证书和密钥文件，并关闭自动创建主机路径；存储卷缺失时会在启动应用前失败，避免创建占位目录和新状态。运行数据应保留在原文件系统，空的挂载点目录不能替代原存储卷。
