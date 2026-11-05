@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 import NetFS
 import Security
+import LocalAuthentication
 
 private func check(_ value: Bool, _ message: String) throws {
  if !value { throw NSError(domain: "NetworkLibraryMountTests", code: 1,
@@ -253,6 +254,13 @@ private final class MountFixture {
   let malformed = SharedCredentialStore(operations: .init(add: { _ in errSecSuccess }, update: { _, _ in errSecSuccess },
    copy: { _ in (errSecSuccess, Data([0xff]) as CFData) }, delete: { _ in errSecSuccess }))
   try rejects { _ = try malformed.read(for: a) }
+  let interaction = SharedCredentialStore(operations: .init(add: { _ in errSecSuccess }, update: { _, _ in errSecSuccess },
+   copy: { query in
+    try! check((query[kSecUseAuthenticationContext as String] as? LAContext)?.interactionNotAllowed==true, "Background token reads cannot display or wait for system UI")
+    try! check(query[kSecUseAuthenticationUI as String] as? String == (kSecUseAuthenticationUIFail as String), "Legacy login-keychain ACL prompts must also fail without UI")
+    return (errSecInteractionNotAllowed, nil)
+   }, delete: { _ in errSecSuccess }))
+  try check(try interaction.read(for: a, allowInteraction: false) == nil, "Unavailable background credential requests explicit sign-in without deleting token")
   var updates = 0
   let raced = SharedCredentialStore(operations: .init(add: { _ in errSecDuplicateItem }, update: { _, _ in
    updates += 1; return updates == 1 ? errSecItemNotFound : errSecSuccess

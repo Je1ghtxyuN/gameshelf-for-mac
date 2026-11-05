@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 import NetFS
 import Security
+import LocalAuthentication
 
 /// Transient gateway credentials. Do not persist this response in library/defaults state.
 struct SharedSMBShare: Codable, Equatable, CustomStringConvertible, CustomDebugStringConvertible {
@@ -400,6 +401,9 @@ struct SharedCredentialStore {
  static func read(connectionID: UUID) throws -> String? {
   try Self().read(for: connectionID)
  }
+ static func readWithoutInteraction(connectionID:UUID)throws->String?{
+  try Self().read(for:connectionID,allowInteraction:false)
+ }
  static func delete(connectionID: UUID) throws {
   try Self().delete(for: connectionID)
  }
@@ -436,11 +440,16 @@ struct SharedCredentialStore {
   }
   guard status == errSecSuccess else { throw NetworkLibraryMount.Failure.credentialFailed(status) }
  }
- func read(for connection: UUID) throws -> String? {
+ func read(for connection: UUID,allowInteraction:Bool=true) throws -> String? {
   var key = query(connection)
+  if !allowInteraction{
+   let context=LAContext();context.interactionNotAllowed=true;key[kSecUseAuthenticationContext as String]=context
+   // The legacy login-keychain ACL path does not honor LAContext alone.
+   key[kSecUseAuthenticationUI as String]=kSecUseAuthenticationUIFail
+  }
   key[kSecReturnData as String] = true; key[kSecMatchLimit as String] = kSecMatchLimitOne
   let (status, value) = operations.copy(key)
-  if status == errSecItemNotFound { return nil }
+  if status == errSecItemNotFound || (!allowInteraction && status == errSecInteractionNotAllowed) { return nil }
   guard status == errSecSuccess else { throw NetworkLibraryMount.Failure.credentialFailed(status) }
   guard let data = value as? Data, let token = String(data: data, encoding: .utf8), !token.isEmpty else {
    throw NetworkLibraryMount.Failure.invalidToken

@@ -37,6 +37,7 @@ run_swift NetworkLibraryMount Sources/NetworkLibraryMount.swift
 run_swift SharedLibrary Sources/Core.swift Sources/SharedLibrary.swift
 run_swift SharedInvitation Sources/Core.swift Sources/SharedLibrary.swift
 run_swift SharedNavigation Sources/Core.swift Sources/SharedLibrary.swift Sources/SharedNavigation.swift
+run_swift SharedAdministration Sources/Core.swift Sources/SharedAdministration.swift
 run_swift SharedProfile Sources/Core.swift Sources/SharedProfile.swift
 run_swift SharedWineRuntime Sources/Core.swift Sources/Runtime.swift Sources/SharedProfile.swift Sources/SharedWineBootstrap.swift
 PYTHONPATH="$PWD/Server" PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Server/tests -p 'test_*.py' -q

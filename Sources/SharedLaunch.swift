@@ -24,6 +24,10 @@ final class SharedRunningSession {
 }
 
 extension App {
+ func sharedBackgroundToken(for connection:SharedConnection)throws->String?{
+  if let token=sharedAccessTokens[connection.id]{return token}
+  return try SharedCredentialStore.readWithoutInteraction(connectionID:connection.id)
+ }
  func sharedToken(for connection:SharedConnection)throws->String? {
   if let token=sharedAccessTokens[connection.id]{return token}
   return try SharedCredentialStore.read(connectionID:connection.id)

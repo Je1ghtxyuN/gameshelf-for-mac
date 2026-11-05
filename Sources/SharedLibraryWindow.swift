@@ -6,7 +6,9 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
  private weak var app:App?
  private let store:SharedConnectionStore
  private var page:Page = .address
- private var selected:SharedConnection?
+ private var selected:SharedConnection? {
+  didSet{if oldValue != selected{administrationWindow?.close();administrationWindow=nil}}
+ }
  private var server:SharedServerInfo?
  private let address=NSTextField(string:"")
  private let username=NSTextField(string:"")
@@ -28,6 +30,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
  private var rows:[(SharedCatalogGame,NSButton,NSPopUpButton)]=[]
  private var games:[SharedCatalogGame]=[]
  private var administratorSetupWindow:AdministratorSetupWindowController?
+ private var administrationWindow:SharedAdministrationWindowController?
  private var accountRequested=false
 
  func openLibrary(){
@@ -53,7 +56,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   render();window.center()
  }
  required init?(coder:NSCoder){fatalError()}
- func windowWillClose(_ notification:Notification){closed=true;operation=UUID();password.stringValue="";app?.sharedLibraryWindow=nil}
+ func windowWillClose(_ notification:Notification){closed=true;operation=UUID();password.stringValue="";administrationWindow?.close();app?.sharedLibraryWindow=nil}
  func controlTextDidBeginEditing(_ obj:Notification){(obj.object as? NSTextField)?.superview.flatMap{$0 as? SharedLoginInput}?.focus(true)}
  func controlTextDidEndEditing(_ obj:Notification){(obj.object as? NSTextField)?.superview.flatMap{$0 as? SharedLoginInput}?.focus(false)}
  private func label(_ value:String,size:CGFloat=14,weight:NSFont.Weight = .regular,secondary:Bool=false)->NSTextField {
@@ -151,6 +154,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   account.image=NSImage(systemSymbolName:"person.crop.circle",accessibilityDescription:nil);account.imagePosition = .imageLeading
   let change=action("切换服务器"){[weak self] in self?.showServers()}
   var headerViews:[NSView]=[title,NSView(),refresh,change,account]
+  if connection.isAdministrator{headerViews.append(action("添加游戏"){[weak self] in self?.openAdministration()})}
   if connection.isAdministrator{headerViews.append(action("服务器管理"){[weak self] in self?.openAdministration()})}
   let header=stack(headerViews,vertical:false,spacing:12)
   let text=label(feedback,size:12,secondary:!feedbackIsError);text.maximumNumberOfLines=2;message=text
@@ -356,8 +360,13 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   }
  }
  private func openAdministration(){
-  guard let connection=selected,connection.isAdministrator,let url=try? SharedServerAddress.parse(connection.address) else{return}
-  NSWorkspace.shared.open(url)
+  guard let connection=selected,connection.isAdministrator,let app else{return}
+  do{
+   if administrationWindow==nil{administrationWindow=try SharedAdministrationWindowController(app:app,connection:connection,showGames:true,changed:{[weak self] in
+    guard let self,!self.closed,self.selected?.id==connection.id else{return};self.loadCatalog()
+   },onClose:{[weak self] in self?.administrationWindow=nil})}
+   administrationWindow?.showWindow(nil);administrationWindow?.window?.makeKeyAndOrderFront(nil)
+  }catch{status(error.localizedDescription,error:true)}
  }
  private func bindPersonalLibrary(){
   guard let connection=selected,let app else{return}
