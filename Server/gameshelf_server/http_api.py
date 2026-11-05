@@ -95,6 +95,9 @@ class Application:
                 m = re.fullmatch('/api/admin/games/'+ID+'/cover', path)
                 if method == 'POST' and m:
                     return s.game_cover(user,m[1],data)
+                m = re.fullmatch('/api/admin/games/'+ID+'/metadata', path)
+                if method == 'POST' and m:
+                    return s.game_metadata(user,m[1],data)
                 m = re.fullmatch('/api/admin/users/'+ID+'/disable', path)
                 if method == 'POST' and m:
                     s.disable_user(m[1]); return {}

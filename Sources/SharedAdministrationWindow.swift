@@ -169,17 +169,32 @@ final class SharedAdministrationWindowController:NSWindowController,NSWindowDele
   review.addButton(withTitle:"发布");review.addButton(withTitle:"取消");guard review.runModal() == .alertFirstButtonReturn else{return}
   let grantSelf=ownAccess.state == .on,account=connection.accountID
   let rules=saveRules
+  // Capture only confirmed title aliases and bounded artwork before entering the task.
+  let catalog=app.map{GameMetadataCatalog(root:$0.store.root)}
+  var metadata:[String:(title:String,cover:LibraryCoverPayload?)]=[:]
+  for candidate in candidates where ids.contains(candidate.id){
+   if let record=catalog?.match(candidate.title){
+    let cover=catalog?.coverURL(record).flatMap{try? LibraryCoverPayload.thumbnail(at:$0)}
+    metadata[candidate.id]=(record.title,cover)
+   }
+  }
   perform("正在发布游戏…"){api,token in
-   var count=0
+   var count=0,metadataFailures=0
    for id in ids {
     try Task.checkCancellation()
     let additional=(rules[id] ?? []).map{["path":$0.path,"kind":$0.kind]}
     let game:SharedCatalogGame=try await api.value(SharedAdminPath.publish(id),method:"POST",token:token,body:["savePaths":additional])
     try Task.checkCancellation()
     if grantSelf{let _:SharedAdminOK=try await api.value("/api/admin/grants",method:"POST",token:token,body:["userID":account,"gameID":game.id,"allowed":true])}
+    if let known=metadata[id]{
+     do{
+      let _:SharedAdminOK=try await api.value("/api/admin/games/"+game.id+"/metadata",method:"POST",token:token,body:["title":known.title])
+      if let cover=known.cover{let _:LibraryCoverPayload=try await api.value("/api/admin/games/"+game.id+"/cover",method:"POST",token:token,body:["data":cover.data])}
+     }catch{metadataFailures+=1}
+    }
     count+=1
    }
-   return "已发布 \(count) 款游戏"
+   return "已发布 \(count) 款游戏"+(metadataFailures>0 ? " · \(metadataFailures) 项名称或封面暂未更新":"")
   }
  }
  private func editSaves(_ candidate:SharedAdminCandidate){

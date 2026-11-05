@@ -16,6 +16,8 @@ for name in Core Storage Runtime Safety NativeEngine RTP RPGDictionary GameResou
  run_swift "$name" Sources/Core.swift Sources/Runtime.swift Sources/NativeEngines.swift Sources/RTP.swift Sources/RPGDictionary.swift Sources/GameResourceServer.swift
 done
 run_swift CoverArt Sources/Core.swift Sources/CoverArt.swift
+run_swift GameMetadataCatalog Sources/Core.swift Sources/CoverArt.swift Sources/GameMetadataCatalog.swift
+run_swift VerifiedGameMetadata Sources/Core.swift Sources/CoverArt.swift Sources/GameMetadataCatalog.swift Sources/VerifiedGameMetadata.swift
 for name in PreparationTask ImportProgress Collection Rename; do run_swift "$name" Sources/Core.swift; done
 run_swift MZSaveArchive Sources/Core.swift Sources/MZSaveMigration.swift
 run_swift NativeAppCache Sources/Core.swift Sources/NativeAppCache.swift Sources/NativeAppIdentity.swift -framework AppKit

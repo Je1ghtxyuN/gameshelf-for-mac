@@ -9,7 +9,7 @@ import Foundation
   try s.renameGame(g.id,name:"  游戏新名称  ")
   try s.recordPlayed(g.id,date:Date(timeIntervalSince1970:123))
   let loaded=try LibraryStore(root:r),new=loaded.games[0]
-  guard new.title=="游戏新名称",new.lastPlayed==Date(timeIntervalSince1970:123),new.id==g.id,new.folder==g.folder,new.entry==g.entry,loaded.collectionIDs(for:g.id)==[c.id],fm.fileExists(atPath:folder.appendingPathComponent("Game.exe").path) else{fatalError("rename altered game identity/source/membership")}
+  guard new.title=="游戏新名称",new.titleIsCustom==true,new.lastPlayed==Date(timeIntervalSince1970:123),new.id==g.id,new.folder==g.folder,new.entry==g.entry,loaded.collectionIDs(for:g.id)==[c.id],fm.fileExists(atPath:folder.appendingPathComponent("Game.exe").path) else{fatalError("rename altered game identity/source/membership")}
   for name in ["", " \n",String(repeating:"a",count:161),"bad\nname","bad\u{0}name"]{
    do{try s.renameGame(g.id,name:name);fatalError("invalid accepted")}catch{}
   }

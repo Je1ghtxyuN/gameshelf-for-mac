@@ -316,7 +316,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
    var count=0
    for (game,checkbox,popup) in rows where checkbox.state == .on {
     guard game.entries.indices.contains(popup.indexOfSelectedItem) else{continue}
-    let added=try app.store.addShared(game,entry:game.entries[popup.indexOfSelectedItem],connection:connection,mountRoot:app.root);app.fetchSharedDefaultCover(game,connection:connection,game:added);checkbox.state = .off;count+=1
+    let added=try app.applyKnownMetadata(app.store.addShared(game,entry:game.entries[popup.indexOfSelectedItem],connection:connection,mountRoot:app.root));app.fetchSharedDefaultCover(game,connection:connection,game:added);checkbox.state = .off;count+=1
    }
    app.showLibrary();finish("已添加 \(count) 款游戏。");selectionChanged()
   }catch{finish(friendly(error),error:true)}

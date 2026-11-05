@@ -167,7 +167,8 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
    do{
     let chosen=entry(record),folder=URL(fileURLWithPath:source.path).appendingPathComponent(record.game.relativePath)
     var game=try app.store.add(source:folder,candidate:chosen)
-    if !previous.contains(game.id),game.title != record.game.title{try app.store.renameGame(game.id,name:record.game.title);game=app.store.games.first(where:{$0.id==game.id}) ?? game}
+    if !previous.contains(game.id),game.title != record.game.title{game.title=record.game.title;try app.store.update(game)}
+    game=try app.applyKnownMetadata(game)
     previous.insert(game.id);try store.markAdded(record.game.id,entry:chosen,gameID:game.id);count+=1;added.append(game)
    }catch{errors.append(error.localizedDescription)}
   }

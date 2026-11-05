@@ -115,6 +115,7 @@ struct Game: Codable, Identifiable {
  var nativeLanguage:String?=nil
  var shared:SharedGameReference?=nil
  var coverOrigin:String?=nil
+ var titleIsCustom:Bool?=nil
  var defaultCoverSHA256:String?=nil
 }
 struct GameCollection:Codable,Identifiable {
@@ -238,7 +239,7 @@ final class LibraryStore {
   let title=name.trimmingCharacters(in:.whitespacesAndNewlines)
   guard !title.isEmpty,title.count<=160,!title.unicodeScalars.contains(where:{CharacterSet.controlCharacters.contains($0)}) else{throw LibraryError("游戏名称须为 1–160 个字符，不能包含换行或控制字符。")}
   guard var game=games.first(where:{$0.id==id}) else{throw LibraryError("游戏已从库中移除。")}
-  game.title=title;try update(game)
+  game.title=title;game.titleIsCustom=true;try update(game)
  }
  func remove(_ id:UUID) throws {
   let previous=games;games.removeAll{$0.id==id}

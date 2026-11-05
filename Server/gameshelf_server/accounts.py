@@ -11,6 +11,7 @@ import secrets
 import sqlite3
 import stat
 import tempfile
+import unicodedata
 import uuid
 
 from .common import APIError, locked, text, wire_json
@@ -275,6 +276,20 @@ class AccountFeatures:
         row=self.db.execute('SELECT data FROM personal_covers WHERE user_id=? AND device_id=? AND game_id=?',(user['id'],device,game)).fetchone()
         if not row: raise APIError(404,'Cover not found')
         return cover_response(row[0])
+    @locked
+    def game_metadata(self,user,game,data):
+        if not user['admin']: raise APIError(403,'Administrator required')
+        if not self.db.execute('SELECT 1 FROM games WHERE id=?',(game,)).fetchone(): raise APIError(404,'Game not found')
+        fields(data,('title',))
+        title=data['title']
+        if not isinstance(title,str) or any(unicodedata.category(c) in ('Cc','Cf','Cs') for c in title):
+            raise APIError(400,'Invalid display title')
+        title=title.strip()
+        utf8_text(title,1024)
+        # Published presentation metadata is independent of edition identity,
+        # permissions, launcher paths and private workspaces.
+        self.db.execute('UPDATE games SET title=? WHERE id=?',(title,game))
+        return self._game(self.db.execute('SELECT * FROM games WHERE id=?',(game,)).fetchone())
     @locked
     def game_cover(self,user,game,data=None):
         if data is None: self._permitted(user,game)

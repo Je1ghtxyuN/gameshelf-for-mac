@@ -691,6 +691,23 @@
       },
       "description": "Atomic SQLite blob replacement; validation failure leaves previous image intact. HTTP body at most 350552 bytes. Unknown fields rejected. Requires an existing device library and game in that account’s snapshot; unknown device/game 404. Cover rows are bounded by 8 libraries × 1000 game UUIDs (each ≤256 KiB); repeated uploads replace the existing row. Removed games are pruned in the same metadata CAS transaction. Legacy accounts with more than 8 device libraries cannot add/replace cover blobs (413); individual reads remain available."
     },
+    "POST /api/admin/games/{gameID}/metadata": {
+      "admin": true,
+      "body": {
+        "type": "object",
+        "required": ["title"],
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Surrounding whitespace is trimmed. The resulting title must be nonempty and at most 1024 UTF-8 bytes. Unicode control/format/surrogate characters are rejected even before trimming."
+          }
+        }
+      },
+      "response": {"$ref": "#/$defs/game"},
+      "description": "Administrator-only display-title update for an existing published 32-hex game ID. Unknown game returns 404; invalid or extra fields 400; nonadministrator 403; unauthenticated 401. Changes only games.title, never grants, entries, source paths, saves, covers or game identity. Does not publish a candidate or grant access. Republication of an unchanged edition retains the canonical published title while refreshing recognized entrances. Default 16 KiB HTTP request-body bound applies."
+    },
     "POST /api/admin/games/{gameID}/cover": {
       "body": {
         "data": "strict base64 JPEG, decoded ≤256 KiB"

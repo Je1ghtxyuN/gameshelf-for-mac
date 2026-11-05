@@ -125,6 +125,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  func applicationDidFinishLaunching(_ notification:Notification){
   if let icon=Bundle.main.url(forResource:"AppIcon",withExtension:"icns").flatMap({NSImage(contentsOf:$0)}){NSApp.applicationIconImage=icon}
   do{store=try LibraryStore(root:root)}catch{errorAlert(error);NSApp.terminate(nil);return}
+  for game in store.games{_ = try? applyKnownMetadata(game)}
   if !FileManager.default.fileExists(atPath:root.appendingPathComponent("collections.json").path){
    do{for name in ["SLG","RPG","视觉小说"]{_ = try store.createCollection(name:name)}}catch{errorAlert(error)}
   }
@@ -419,7 +420,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  @discardableResult func add(_ source:URL,_ candidate:Candidate)->ImportProgress.Outcome{do{
   showStatus("正在登记「\(source.lastPathComponent)」到游戏库…")
   let existingIDs=Set(store.games.map{$0.id})
-  let game=try store.add(source:source,candidate:candidate)
+  let game=try applyKnownMetadata(store.add(source:source,candidate:candidate))
   filter="all";search.stringValue="";showLibrary()
   if game.cover==nil,UserDefaults.standard.object(forKey:"AutoOnlineCover") as? Bool != false{findCover(game,automatic:true)}
   return existingIDs.contains(game.id) ? .existing:.added
@@ -847,6 +848,11 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
    catch{self.preparationReady{self.setBusy(false,"");self.errorAlert(error)}}
   }
  }
+ @discardableResult func applyKnownMetadata(_ game:Game)throws->Game {
+  let updated=game.applyingKnownMetadata(GameMetadataCatalog(root:store.root))
+  if updated.title != game.title || updated.cover != game.cover{try store.update(updated)}
+  return updated
+ }
  func findCover(_ game:Game,automatic:Bool){
   guard !coverRequests.contains(game.id) else{return}
   var search=CoverArt.query(game.title)
@@ -874,7 +880,11 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
      await MainActor.run {
       guard var current=self.store.games.first(where:{$0.id==game.id}),current.cover==selection.prior,(!automatic || current.cover==nil) else{return}
       current.cover=path;current.coverOrigin=nil;current.defaultCoverSHA256=nil
-      do{try self.store.update(current);self.renderCards()}catch{if !automatic{self.errorAlert(error)}}
+      do{
+       try self.store.update(current)
+       try GameMetadataCatalog(root:coverRoot).remember(title:selection.match.title,aliases:selection.match.aliases+[game.title,requested],imageURL:URL(fileURLWithPath:path),source:selection.match.source,page:selection.match.page.absoluteString)
+       self.renderCards()
+      }catch{if !automatic{self.errorAlert(error)}}
      }
     }
    }catch{if !automatic{await MainActor.run{self.errorAlert(error)}}}

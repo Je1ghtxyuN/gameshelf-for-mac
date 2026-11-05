@@ -374,9 +374,11 @@ class Service(AccountFeatures):
         if existing:
             # Explicit selected publication may add a newly validated launcher
             # to unchanged source bytes. Keep edition identity/private saves and
-            # grants; scanning alone never changes an already published catalog.
-            if existing['title'] != row['title'] or existing['entries'] != row['entries']:
-                self.db.execute('UPDATE games SET title=?,entries=? WHERE id=?',(row['title'],row['entries'],existing['id']))
+            # grants and canonical display title; scanning alone never changes
+            # an already published catalog. An admin's metadata rename must not
+            # be replaced by a later scan-derived directory name.
+            if existing['entries'] != row['entries']:
+                self.db.execute('UPDATE games SET entries=? WHERE id=?',(row['entries'],existing['id']))
                 existing=self.db.execute('SELECT * FROM games WHERE id=?',(existing['id'],)).fetchone()
             return self._game(existing)
         game_id = uid()

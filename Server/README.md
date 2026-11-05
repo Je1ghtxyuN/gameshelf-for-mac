@@ -225,6 +225,12 @@ Personal cover GET/POST requires an existing device library and a game UUID pres
 
 个人封面 GET/POST 必须先有本账号的设备库及快照内游戏；未知对象返回 **404**，须先上传元数据。其他账号即使使用相同 UUID 也无法访问或插入。元数据移除游戏时，在同一次 CAS 事务中删除对应封面。每库最多 1000 个游戏，因此每账号新增封面记录最多 8 × 1000，每张仍限 256 KiB；已发布游戏的默认封面接口不变。
 
+### Published display titles / 已发布游戏标题
+
+Administrators may explicitly update a published game's display title with `POST /api/admin/games/{gameID}/metadata` and exactly `{title:string}`. Surrounding whitespace is trimmed; the result must be nonempty and at most 1024 UTF-8 bytes, without control/format characters. The response is the public game object. Unknown games return 404, malformed bodies 400, nonadministrators 403 and unauthenticated requests 401. Only the display title changes: identity, grants, entries, paths, saves and covers remain intact. An unchanged edition's republication preserves its canonical title while refreshing recognized launchers. Renaming never publishes another game or grants access.
+
+管理员可显式使用上述接口修改已发布游戏的显示标题；仅接受 title 字段，去除首尾空白后须非空、最多 1024 UTF-8 字节，拒绝控制/格式字符。不会修改游戏标识、权限、入口、路径、存档或封面，也不会自动发布或授权。同一未变更版本再次发布时保留现有标题。
+
 ### Storage mount readiness / 存储挂载
 
 Restore the configured storage volume before starting the gateway. Compose binds the existing certificate and key files individually with host-path creation disabled, so an absent volume fails before application startup instead of creating placeholder directories and fresh state. Keep the state directory on its original filesystem; reconnecting an empty mount-point directory is not a replacement for restoring that filesystem.

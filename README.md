@@ -60,6 +60,8 @@ In a connected library, the Account page can bind this Mac’s game metadata to 
 
 Playtime is recorded while GameShelf is open, including background game time, and pauses when your Mac sleeps. Recording starts when this feature is enabled.
 
+Confirmed title aliases and cover art are cached locally and reused on later imports. Publishing a matched game includes its default name and cover for authorized players; personal artwork remains separate.
+
 ## Build from source
 
 Install Apple Command Line Tools, Python 3.12+, Ruby, and Node.js 20+, then run:

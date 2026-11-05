@@ -64,7 +64,7 @@ extension App {
   }catch{if force{errorAlert(error)}}
  }
  func fetchSharedDefaultCover(_ remote:SharedCatalogGame,connection:SharedConnection,game:Game){
-  guard let digest=remote.coverSHA256,digest.count==64,digest.allSatisfy({"0123456789abcdef".contains($0)}),remote.id.count==32,remote.id.allSatisfy({"0123456789abcdef".contains($0)}),game.cover==nil || game.coverOrigin=="shared-default",!coverRequests.contains(game.id) else{return}
+  guard let digest=remote.coverSHA256,digest.count==64,digest.allSatisfy({"0123456789abcdef".contains($0)}),remote.id.count==32,remote.id.allSatisfy({"0123456789abcdef".contains($0)}),game.cover==nil || game.coverOrigin=="shared-default" || game.coverOrigin=="catalog",!coverRequests.contains(game.id) else{return}
   if game.coverOrigin=="shared-default",game.defaultCoverSHA256==digest,game.cover.map({FileManager.default.fileExists(atPath:$0)})==true{return}
   do{
    guard let token=try sharedToken(for:connection) else{return}
