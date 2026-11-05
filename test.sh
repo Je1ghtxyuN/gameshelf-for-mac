@@ -8,6 +8,7 @@ run_swift() {
  local name="$1"; shift
  local sources=("$@")
  case " $* " in *" Sources/Core.swift "*) sources+=(Sources/VisualNovelProbe.swift);; esac
+ case " $* " in *" Sources/SharedLibrary.swift "*) sources+=(Sources/PinnedHTTP.swift);; esac
  swiftc -swift-version 5 -module-cache-path build/module-cache "${sources[@]}" "Tests/${name}Tests.swift" -o "build/${name}Tests"
  "build/${name}Tests"
 }
@@ -46,3 +47,6 @@ run_swift PersonalLibrary Sources/Core.swift Sources/SharedLibrary.swift Sources
 run_swift PersonalLibraryMedia Sources/Core.swift Sources/SharedLibrary.swift Sources/PersonalLibraryMedia.swift
 run_swift Onboarding Sources/Core.swift Sources/SharedLibrary.swift Sources/Onboarding.swift
 "$node_bin" --test Server/tests/test_admin_ui.js
+
+run_swift PinnedHTTP Sources/PinnedHTTP.swift
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests -p test_shared_https_bundle.py -q

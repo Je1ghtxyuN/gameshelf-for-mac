@@ -23,6 +23,7 @@
     "Sources/PersonalLibrary.swift",
     "Sources/PersonalLibraryMedia.swift",
     "Sources/PersonalLibrarySync.swift",
+    "Sources/PinnedHTTP.swift",
     "Sources/PlaytimeRecorder.swift",
     "Sources/PlaytimeStore.swift",
     "Sources/RPGDictionary.swift",
@@ -70,6 +71,7 @@
     "Tests/OnboardingTests.swift",
     "Tests/PersonalLibraryMediaTests.swift",
     "Tests/PersonalLibraryTests.swift",
+    "Tests/PinnedHTTPTests.swift",
     "Tests/PlaytimeRecorderTests.swift",
     "Tests/PlaytimeStoreTests.swift",
     "Tests/PreparationTaskTests.swift",
@@ -79,6 +81,7 @@
     "Tests/RuntimeTests.swift",
     "Tests/SafetyTests.swift",
     "Tests/SettingsModelTests.swift",
+    "Tests/SharedHTTPSBundleProbe.swift",
     "Tests/SharedInvitationTests.swift",
     "Tests/SharedLibraryTests.swift",
     "Tests/SharedProfileTests.swift",
@@ -90,7 +93,8 @@
     "Tests/UnityCursorAdapterTests.swift",
     "Tests/VisualNovelImportTests.swift",
     "Tests/VisualNovelProbeTests.swift",
-    "Tests/test_renpy_save_migration.py"
+    "Tests/test_renpy_save_migration.py",
+    "Tests/test_shared_https_bundle.py"
   ],
   "scaffold": [
     "LICENSE",

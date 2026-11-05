@@ -162,9 +162,11 @@ private final class SharedNoRedirect:NSObject,URLSessionTaskDelegate {
 final class SharedAPI {
  let address:URL
  private let session:URLSession
+ private let certificatePin:String?
  init(address:String,certificateSHA256:String?=nil)throws {
   self.address=try SharedServerAddress.parse(address)
   let pin=try SharedServerAddress.certificatePin(certificateSHA256 ?? "")
+  certificatePin=pin
   let config=URLSessionConfiguration.ephemeral;config.timeoutIntervalForRequest=30;config.timeoutIntervalForResource=120
   // LAN and overlay-network destinations are reached directly. Sending these
   // private endpoints through an unrelated system proxy can stall TLS entirely.
@@ -182,7 +184,7 @@ final class SharedAPI {
   if let token{request.setValue("Bearer "+token,forHTTPHeaderField:"Authorization")}
   do {if let body{request.httpBody=try JSONSerialization.data(withJSONObject:body);request.setValue("application/json",forHTTPHeaderField:"Content-Type")}}
   catch{completion(.failure(error));return}
-  session.dataTask(with:request){[self] data,response,error in
+  let finish:(Data?,URLResponse?,Error?)->Void = {[self] data,response,error in
    _ = self.address // Keep the API/session alive through one-shot cleanup calls.
    if let error{completion(.failure(error));return}
    guard let http=response as? HTTPURLResponse,let data,data.count<=8*1024*1024 else{completion(.failure(LibraryError("共享库响应无效或过大。")));return}
@@ -190,7 +192,16 @@ final class SharedAPI {
     completion(.failure(SharedRequestError(statusCode:http.statusCode)));return
    }
    do{completion(.success(try JSONDecoder().decode(T.self,from:data)))}catch{completion(.failure(LibraryError("共享库响应格式不兼容。")))}
-  }.resume()
+  }
+  if let certificatePin {
+   guard url.scheme=="https" else{completion(.failure(LibraryError("证书绑定仅适用于 HTTPS。")));return}
+   PinnedHTTPTransport.request(request,certificateSHA256:certificatePin){result in
+    switch result {
+    case .success(let value):finish(value.0,value.1,nil)
+    case .failure(let error):finish(nil,nil,error)
+    }
+   }
+  }else{session.dataTask(with:request,completionHandler:finish).resume()}
  }
  func login(username:String,password:String,completion:@escaping(Result<SharedLoginResponse,Error>)->Void) {
   request("/api/login",method:"POST",body:["username":username,"password":password],completion:completion)

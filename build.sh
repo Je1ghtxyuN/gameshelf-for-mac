@@ -8,7 +8,7 @@ app=dist/GameShelf.app
 mkdir -p build/module-cache "$app/Contents/MacOS" "$app/Contents/Resources/Tools"
 swift -module-cache-path build/module-cache Tools/Icon.swift build/AppIcon.iconset
 iconutil -c icns build/AppIcon.iconset -o "$app/Contents/Resources/GameShelfIcon.icns"
-swiftc -swift-version 5 -O -module-cache-path build/module-cache -target "${arch}-apple-macosx15.0" -framework AppKit -framework WebKit -framework NetFS -framework Security \
+swiftc -swift-version 5 -O -module-cache-path build/module-cache -target "${arch}-apple-macosx15.0" -framework AppKit -framework WebKit -framework NetFS -framework Security -framework Network \
  Sources/*.swift \
  -o "$app/Contents/MacOS/GameShelf"
 for tool in prepare_rgss_dictionary.rb append_rgss3a.py migrate_mz_saves.js migrate_renpy_saves.py shared_web_storage.js; do
@@ -25,7 +25,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleExecutable</key><string>GameShelf</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>1.1.0</string>
-<key>CFBundleVersion</key><string>19</string>
+<key>CFBundleVersion</key><string>20</string>
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSNetworkVolumesUsageDescription</key><string>读取您导入的网络卷游戏文件夹。</string>

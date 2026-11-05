@@ -230,3 +230,7 @@ Personal cover GET/POST requires an existing device library and a game UUID pres
 Restore the configured storage volume before starting the gateway. Compose binds the existing certificate and key files individually with host-path creation disabled, so an absent volume fails before application startup instead of creating placeholder directories and fresh state. Keep the state directory on its original filesystem; reconnecting an empty mount-point directory is not a replacement for restoring that filesystem.
 
 共享服务启动前应先恢复配置的存储卷。Compose 分别绑定已存在的证书和密钥文件，并关闭自动创建主机路径；存储卷缺失时会在启动应用前失败，避免创建占位目录和新状态。运行数据应保留在原文件系统，空的挂载点目录不能替代原存储卷。
+
+For an explicitly pinned endpoint, the Mac client establishes a direct TLS 1.2+ connection and checks the exact leaf fingerprint, hostname and validity. This avoids changing system trust or weakening the app’s global transport policy. An endpoint using normal CA validation continues through the system URL session and proxy policy; a pinned endpoint must be directly reachable from the client.
+
+显式绑定证书的端点使用直接的 TLS 1.2+ 连接，检查叶证书指纹、主机名与有效期，不修改系统信任或应用全局传输策略。普通 CA 验证的端点继续使用系统网络会话及代理策略；绑定证书的端点需要客户端能够直接到达。
