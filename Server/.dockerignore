@@ -8,3 +8,7 @@ state
 *.key
 *.pem
 *.crt
+
+# Private first-administrator capability; never commit or build into an image.
+administrator-setup.json
+.setup-*

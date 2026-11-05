@@ -1,5 +1,4 @@
 """Single-process, serialized SQLite authority. No game bytes are written here."""
-import functools
 import hashlib
 import hmac
 import json
@@ -13,25 +12,10 @@ import threading
 import time
 import uuid
 
-class APIError(Exception):
-    def __init__(self, status, message):
-        self.status, self.message = status, message
-        super().__init__(message)
-
-def locked(fn):
-    @functools.wraps(fn)
-    def call(self, *args, **kwargs):
-        with self.lock:
-            return fn(self, *args, **kwargs)
-    return call
+from .common import APIError, locked, text
 
 def uid():
     return uuid.uuid4().hex
-
-def text(value, maximum=256):
-    if not isinstance(value, str) or not value or len(value) > maximum or any(ord(c) < 32 for c in value):
-        raise APIError(400, 'Invalid text')
-    return value
 
 def clean_path(value):
     value = text(str(value), 4096)
@@ -90,7 +74,9 @@ def tree_signature(root, limit=100000, source_root=None):
                 raise APIError(400, 'Game exceeds scan limit')
     return hashlib.sha256(json.dumps(sorted(items)).encode()).hexdigest()
 
-class Service:
+from .accounts import AccountFeatures
+
+class Service(AccountFeatures):
     def __init__(self, state, driver, allowed_sources, clock=time.time, token_ttl=86400, lease_ttl=90):
         self.state = clean_path(state)
         self.allowed = [clean_path(p) for p in allowed_sources]
@@ -104,6 +90,14 @@ class Service:
         self.lock = threading.RLock()
         self.scan_lock = threading.Lock()
         self.driver_lock = threading.Lock()
+        # State is gateway-owned. Reject linked DB/journal files before SQLite
+        # can open them; no metadata path is derived from an API selector.
+        for name in ('gateway.sqlite3','gateway.sqlite3-wal','gateway.sqlite3-shm','gateway.sqlite3-journal'):
+            path=self.state/name
+            try: info=path.lstat()
+            except FileNotFoundError: continue
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1:
+                raise APIError(400,'Unsafe state database file')
         self.db = sqlite3.connect(self.state/'gateway.sqlite3', check_same_thread=False, isolation_level=None)
         os.chmod(self.state/'gateway.sqlite3', 0o600)
         self.db.row_factory = sqlite3.Row
@@ -136,6 +130,7 @@ class Service:
         self.db.execute("INSERT OR IGNORE INTO settings VALUES ('serverID',?)", (uid(),))
         self.server_id = self.db.execute("SELECT value FROM settings WHERE key='serverID'").fetchone()[0]
         self.dummy_salt = secrets.token_hex(16)
+        self.initialize_accounts()
     def _external(self,operation):
         """Run slow I/O without retaining ANY recursive authority lock levels.
 
@@ -184,6 +179,9 @@ class Service:
                             (account_id, username, salt, digest, int(admin), unix_uid))
         except sqlite3.IntegrityError:
             raise APIError(409, 'Username already exists') from None
+        if not self.db.in_transaction:
+            self.db.execute("DELETE FROM settings WHERE key='setupDigest'")
+            (self.state/'administrator-setup.json').unlink(missing_ok=True)
         return dict(id=account_id, username=username, admin=admin, uid=unix_uid)
     @locked
     def users(self):
@@ -354,8 +352,11 @@ class Service:
             raise APIError(409, 'Edition changed; scan and publish a new edition')
         return lower
     def _game(self, row):
-        return dict(id=row['id'], title=row['title'], entries=json.loads(row['entries']),
+        game=dict(id=row['id'], title=row['title'], entries=json.loads(row['entries']),
                     savePaths=json.loads(row['save_paths']),saveIsolation='known-rules-plus-admin-config; arbitrary saves require review')
+        cover=self.db.execute('SELECT data FROM game_covers WHERE game_id=?',(row['id'],)).fetchone()
+        if cover: game['coverSHA256']=hashlib.sha256(cover[0]).hexdigest()
+        return game
     @locked
     def publish(self, candidate_id, save_paths=None, *, authorize=None):
         row = self.db.execute('SELECT * FROM candidates WHERE id=? AND available=1', (candidate_id,)).fetchone()

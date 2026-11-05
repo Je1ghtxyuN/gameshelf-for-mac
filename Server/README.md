@@ -56,31 +56,30 @@ Certificate renewal changes this pin. Deliver the replacement fingerprint throug
 
 证书更新会改变 pin，需可信核验后更新。反向代理的明文上游仅支持同一网络命名空间的回环监听；默认 Compose 直接提供 TLS，不信任转发头。代理改写 Host 时设置精确的 `GAMESHELF_PUBLIC_ORIGIN`。
 
-### Bootstrap / 初始化管理员
+### First administrator / 首位管理员
 
-Create a password file **outside the repository and source/state mounts**, using hidden input. Point `GAMESHELF_BOOTSTRAP_PASSWORD_FILE` in `.env` to it and choose `GAMESHELF_BOOTSTRAP_USERNAME`. The file is a Docker secret, read only when the users table is empty. No password environment variable, command argument or request log is used.
+Default Compose starts without a preset account. Configure `GAMESHELF_PUBLIC_ADDRESS` (or `GAMESHELF_PUBLIC_ORIGIN`) and optionally `GAMESHELF_CERTIFICATE_SHA256`; these are the same verified HTTPS address and leaf pin used by client invitations. An empty service writes **`/state/administrator-setup.json`**, mode **0600**, containing version 1, `kind: "administrator-setup"`, address, optional name/pin, and a random one-use `setupToken`. Retrieve that file privately from the dedicated state directory and import it in the client setup flow, or select it on the HTTPS admin page to choose your username/password. No URL fragment, command argument or log carries the capability. Do not share it as a normal invitation or commit it. The admin page keeps credentials in memory.
 
-在仓库及源/状态挂载之外创建私有密码文件；密码通过隐藏输入读取，不能作为命令参数。首次空数据库才使用该 Docker secret，不会重置已有账号：
+默认 Compose 不预置账号。配置公开 HTTPS 地址及可选证书 pin，空服务在专用状态目录生成权限 0600 的 `administrator-setup.json`。通过私有渠道取出并导入客户端初始化流程，或在 HTTPS 管理页选择该文件后设置管理员用户名和密码。此文件包含 `kind: "administrator-setup"` 和一次性初始化权限，不是普通连接邀请，不能公开或提交。账号建立后能力立即失效并删除文件；已有账号（包括停用账号）的服务不会重新开放认领，也不会重置密码。
+
+`GET /api/server-info` includes `setupRequired`. `POST /api/setup` accepts `{setupToken,username,password}` and returns the existing login response. The first-administrator check, account creation and capability consumption run in one SQLite transaction; concurrent claims yield one success and 409 for others. Failed validation retains the invitation. The file stays stable across restarts with unchanged public configuration. Missing public address leaves setup unavailable until configured; no request Host is used. For self-signed TLS, verify the fingerprint privately before using the invitation.
 
 ```sh
-python3 - <<'PY'
-import getpass, os
-from pathlib import Path
-path = Path(input('Private password file absolute path: '))
-fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-with os.fdopen(fd, 'w') as f:
-    f.write(getpass.getpass('Initial administrator password (12+ chars): '))
-PY
 docker compose build
 docker compose up -d
-# Create another admin interactively, or bootstrap a service with no initial users.
-# 在线创建管理员：仅容器 root 的 0600 Unix socket，不发送到远程 HTTP。
+# Retrieve administrator-setup.json from the private host state directory.
+# 仅通过私有渠道取出宿主专用状态目录中的初始化邀请。
+# Optional interactive administrator creation; password uses hidden input:
 docker compose exec gateway python -m gameshelf_server create-admin
 ```
 
-`create-admin` prompts for username and password twice. In a running container it calls a root-private local Unix socket; no arbitrary command or filesystem API exists. Offline it takes the exclusive SQLite state lock. Run a single gateway per state volume. Do not start multiple Samba/gateway processes inside one container.
+Existing password-file bootstrap remains available through the optional override `compose.bootstrap.yaml`. Set `GAMESHELF_BOOTSTRAP_USERNAME` and `GAMESHELF_BOOTSTRAP_PASSWORD_FILE` to an external 0600 secret file created with hidden input, then run `docker compose -f compose.yaml -f compose.bootstrap.yaml up -d`. Password-file bootstrap is only used on an empty database; no password environment variable or argument exists. An initialized state needs neither setup invitation nor bootstrap secret.
 
-`create-admin` 交互读取用户名及两次密码，在线通过 root 专属 Unix socket 创建；离线使用独占状态锁。同一状态卷只允许一个网关进程。
+原有密码文件初始化可通过 `compose.bootstrap.yaml` 可选覆盖文件使用。密码文件放在仓库及源挂载之外，用隐藏输入创建；只有空数据库才读取。已有状态无需初始化文件或密码 secret。
+
+`create-admin` prompts for username/password, using the running container's root-private Unix socket or an offline exclusive state lock. Run one gateway per state volume. Self-admin `POST /api/admin/users/{id}/rename {username}` changes only your login name, retaining account ID, password, tokens, roles, grants, leases and private metadata. It cannot rename another account.
+
+`create-admin` 在线使用 root 专属 Unix socket，离线使用独占状态锁；同一状态卷只运行一个网关。管理员仅能通过 rename 接口修改自己的用户名；原账号 ID、密码、角色、令牌、授权、租约和个人数据保留。
 
 ## Client invitation / 客户端连接邀请
 
@@ -197,3 +196,31 @@ docker run --rm --network none --cap-drop ALL \
 Checks real encrypted SMB reads/writes/rename/delete, internal links, Alice/Bob seed-save privacy and reopening, unchanged source hashes, grants, old credentials and an actual busy-mount reassignment barrier. Same-device bind mounts are identified through `/proc/self/mountinfo`, not `os.path.ismount`. A failed unmount preserves scratch rather than deleting through a live mount; cleanup diagnostics never replace the original test failure. Kernel/SMB/macOS compatibility and sparse NetFS reads must still be verified in deployment; a passing injected-driver suite is not that evidence.
 
 覆盖真实加密 SMB、copy-up/删除/重命名、内部链接、双账号源存档遮蔽及重开保持、源哈希不变、授权、旧凭据失效和真实忙碌挂载屏障。卸载失败时保留测试目录，不穿过活挂载删除。仍需部署方验证目标内核、macOS NetFS 稀疏读取及实际游戏适配。
+
+## Private metadata and covers / 私有元数据与封面
+
+Authenticated `GET /api/personal-library` lists only the caller's libraries. `GET/POST /api/personal-library/{deviceUUID}` reads or atomically updates one revisioned snapshot. A missing library GET returns 404; the first POST uses expectedRevision 0. POST is `{expectedRevision,snapshot}`; success returns `{deviceID,revision,snapshot}` with revision incremented, while a stale revision returns 409 without changing data. A snapshot contains only game UUID/title/favorite/collection UUIDs/playtime/optional last-played and collection UUID/name. No launch paths, programs, resources or saves are accepted. Other administrators cannot access it through their account APIs. See `api-schema.json` for exact fields and limits.
+
+个人库 API 仅按当前登录账号隔离，管理员也不能选择其他账号。未建立的个人库 GET 返回 404，首次 POST 使用 expectedRevision 0；冲突返回 409，不能静默覆盖。只接受标题、收藏、分组与时长等元数据，不上传路径、程序或存档。快照最多 512 KiB、1000 个游戏、200 个分组，标题最多 1024 UTF-8 字节，分组名最多 240 UTF-8 字节，数值必须有限且非负，playtimeSeconds 最大 31557600000。未知字段、重复 UUID 或无效分组引用均拒绝。
+
+Personal `GET/POST /api/personal-library/{deviceUUID}/covers/{gameUUID}` is separate from snapshot revisions. POST accepts `{data:base64JPEG}`; GET and POST return `{data,mime:"image/jpeg",sha256}`. Canonical defaults use administrator-only `POST /api/admin/games/{gameID}/cover` and explicitly granted `GET /api/games/{gameID}/cover`. Catalog entries optionally include `coverSHA256`. Personal covers never overwrite these defaults. The admin page uploads default JPEG covers for already-published games; uploading a cover does not publish a game or create grants.
+
+封面独立接口统一接收 base64 JPEG JSON，返回图像、MIME 与 SHA-256。个人覆盖仅属于当前账号/设备/游戏，默认封面只允许管理员写入、已授权账号读取。管理页仅为已发布游戏上传默认封面；不会自动发布或授权。
+
+Decoded covers are at most 256 KiB; JPEG marker structure is checked, restricted to 8-bit baseline/extended/progressive, 1/3 components and dimensions at most 2048×2048. This standard-library check does not fully decode image pixels; clients must handle decoder rejection. Snapshots/covers are stored transactionally in gateway SQLite, outside all game sources. No image subprocess, filesystem selector, symlink traversal or browser database is involved. Ordinary requests retain a 16 KiB body limit; only the exact snapshot route permits 512 KiB + 1024 bytes, and exact cover routes permit 350552 bytes of base64 JSON. Malformed/nonfinite/duplicate-key JSON is rejected. Validation or CAS failure leaves prior data intact.
+
+封面解码后最多 256 KiB，仅接受规定的 JPEG 标记结构与尺寸；标准库校验不等于完整像素解码，客户端仍需处理坏图。快照及封面通过 SQLite 原子事务保存，不进入源目录。普通请求仍限 16 KiB，只有对应快照及封面路由放宽；非法 JSON、非有限数与重复键拒绝，失败不会改变已有记录。
+
+UUID inputs accept uppercase/lowercase hyphenated strings; responses normalize device/game/collection UUIDs to lowercase. Personal-library envelopes remain exactly `{deviceID,revision,snapshot}`; the HTTP token defines the account namespace.
+
+UUID 接受大小写带连字符格式，响应统一为小写。个人库响应仍仅含 deviceID、revision、snapshot；账号范围由 HTTP token 决定。
+
+### Account storage bounds / 账号存储上限
+
+Each account may store at most **8** device libraries. `GET /api/personal-library` retains the full-snapshot contract and is limited to **4 MiB of the actual UTF-8 HTTP JSON**, including escaping, spaces and envelopes. Metadata CAS checks the prospective full response before commit; exceeding either quota returns **413** without changing the snapshot, revision or covers. Listing fetches at most nine small device descriptors before loading any snapshot, and each snapshot read is bounded separately. Existing legacy overquota accounts receive 413 rather than silent truncation/deletion; individual device reads remain available for operator-assisted recovery. Cover writes on legacy accounts above the eight-library cap also return 413.
+
+每账号最多 **8** 个设备库，完整快照列表按实际 HTTP JSON 编码最多 **4 MiB**，包括转义、空格及响应封装。CAS 提交前检查新状态，超限返回 **413** 并回滚快照、版本与封面清理。读取列表先限制为最多九条小型设备记录，不读取全部快照。旧版超限数据不会自动删除或截断，单设备读取仍可用于管理员协助处理，超过八库的旧账号封面写入也返回 413。
+
+Personal cover GET/POST requires an existing device library and a game UUID present in that account’s current snapshot; unknown device/game returns **404**. Metadata must therefore be uploaded first. Matching UUIDs in another account grant no access. Updating metadata atomically prunes removed games’ cover blobs within the same CAS transaction. With at most 1000 games/library, new cover rows are bounded by 8 × 1000 per account; each image remains at most 256 KiB. Default published-game covers use their separate unchanged authorization routes.
+
+个人封面 GET/POST 必须先有本账号的设备库及快照内游戏；未知对象返回 **404**，须先上传元数据。其他账号即使使用相同 UUID 也无法访问或插入。元数据移除游戏时，在同一次 CAS 事务中删除对应封面。每库最多 1000 个游戏，因此每账号新增封面记录最多 8 × 1000，每张仍限 256 KiB；已发布游戏的默认封面接口不变。

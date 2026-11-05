@@ -114,6 +114,8 @@ struct Game: Codable, Identifiable {
  var windowSize:String?=nil
  var nativeLanguage:String?=nil
  var shared:SharedGameReference?=nil
+ var coverOrigin:String?=nil
+ var defaultCoverSHA256:String?=nil
 }
 struct GameCollection:Codable,Identifiable {
  var id:UUID=UUID()

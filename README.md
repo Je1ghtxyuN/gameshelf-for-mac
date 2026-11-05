@@ -39,6 +39,8 @@ Open the release DMG and drag **GameShelf.app** onto the **Applications** shortc
 
 ## Getting started
 
+On first launch, choose **Local use**, **Connect to a shared library**, or **Create a shared library**. Local use needs no account. A newly deployed gateway provides a private, one-use administrator setup file; open it in the creation flow to choose your own administrator credentials.
+
 1. Click **Add library** and register a folder containing games. Local disks, external disks and mounted network folders work the same way.
 2. Scan it, tick the games you want and choose a launch entry where needed. Nothing is added automatically. **File → Add game manually** remains available for special cases.
 3. For Windows games, open **Settings** and select an existing **Wineskin `.app`** environment. Native Mac games use their own app; Ren’Py adapters use the matching engine version.
@@ -49,6 +51,8 @@ NAS games stay in their original directory. Keep the network share mounted while
 For account-based sharing, open **Shared library**, load the server invitation file (or enter its address), then sign in. Select games from the authorized catalog; no NAS account is required. The gateway uses encrypted SMB3 and an independent writable workspace for each account and game. Shared games run from the network; the local-copy action applies to directly imported games.
 
 See [server setup](Server/README.md) for accounts, scan/publish selection, access grants, certificates and save exclusions. Shared Windows games use private Wine user folders; managed native Ren’Py uses a private save directory. The verified RPG Maker MZ WebKit profile writes saves and settings to account-private network storage, with confirmation before exit. Other shared web and native engines need their own save adapter.
+
+In a connected library, the account menu can bind this Mac’s game metadata to your personal account. Names, collections, favorites, playtime and cover thumbnails sync separately from game files and saves. Shared-library default covers belong to published games; personal cover changes remain private.
 
 Playtime is recorded while GameShelf is open, including background game time, and pauses when your Mac sleeps. Recording starts when this feature is enabled.
 

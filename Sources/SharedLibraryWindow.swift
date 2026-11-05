@@ -27,6 +27,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
  private var selectionLabel:NSTextField?
  private var rows:[(SharedCatalogGame,NSButton,NSPopUpButton)]=[]
  private var games:[SharedCatalogGame]=[]
+ private var administratorSetupWindow:AdministratorSetupWindowController?
 
  init(app:App)throws {
   self.app=app;store=try SharedConnectionStore(root:app.root)
@@ -99,6 +100,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
    add(action("继续",primary:true){[weak self] in self?.connect()})
    let options=stack([link("使用邀请文件…"){[weak self] in self?.importInvitation()},NSView(),link("高级设置"){[weak self] in self?.advanced()}],vertical:false,spacing:8)
    add(options)
+   add(link("创建共享库…"){[weak self] in self?.beginAdministratorSetup()})
    if !store.connections.isEmpty{add(link("返回已连接的服务器"){[weak self] in self?.showServers()})}
   case .login:
    add(label("欢迎回来",size:25,weight:.semibold))
@@ -132,6 +134,8 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   refresh.image=NSImage(systemSymbolName:"arrow.clockwise",accessibilityDescription:"刷新游戏");refresh.toolTip="刷新游戏";refresh.isBordered=false
   let account=NSPopUpButton(frame:.zero,pullsDown:true);account.addItem(withTitle:connection.username);account.image=NSImage(systemSymbolName:"person.crop.circle",accessibilityDescription:nil)
   let menu=account.menu!;menu.addItem(ActionMenuItem("切换服务器"){[weak self] in self?.showServers()})
+  menu.addItem(ActionMenuItem("绑定本机游戏库资料…"){[weak self] in self?.bindPersonalLibrary()})
+  menu.addItem(ActionMenuItem("同步个人资料"){[weak app] in app?.syncPersonalLibrary(force:true)})
   if connection.isAdministrator{menu.addItem(ActionMenuItem("服务器管理"){[weak self] in self?.openAdministration()})}
   menu.addItem(.separator());menu.addItem(ActionMenuItem("退出登录"){[weak self] in self?.logout()})
   let header=stack([title,NSView(),refresh,account],vertical:false,spacing:12)
@@ -199,7 +203,9 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
      guard !info.serverID.isEmpty,info.serverID.count<=128 else{throw LibraryError("此服务器的身份信息无效。")}
      if let old=self.selected,old.serverID != info.serverID{throw LibraryError("服务器身份发生变化，请确认地址后添加为新的服务器。")}
      let name=info.name.trimmingCharacters(in:.whitespacesAndNewlines);info.name=name.isEmpty || name.count>80 ? self.host(self.address.stringValue):name
-     self.server=info;self.page = .login;self.feedback="";self.feedbackIsError=false;self.render()
+     self.server=info
+     if info.setupRequired==true{self.page = .address;self.feedback="等待管理员初始化";self.feedbackIsError=false;self.render();self.beginAdministratorSetup();return}
+     self.page = .login;self.feedback="";self.feedbackIsError=false;self.render()
     }catch{self.finish(self.friendly(error),error:true)}
    }}
   }catch{finish(friendly(error),error:true)}
@@ -237,7 +243,12 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
    client.catalog(token:token){[weak self] result in DispatchQueue.main.async {
     guard let self,!self.closed,self.operation==id else{return}
     self.loading=false
-    do{self.games=try result.get().games;self.page = .catalog;self.feedback="";self.feedbackIsError=false;self.render()}
+    do{
+     self.games=try result.get().games;self.page = .catalog;self.feedback="";self.feedbackIsError=false;self.render()
+     for remote in self.games {
+      if let game=app.store.games.first(where:{$0.shared?.serverID==connection.serverID && $0.shared?.accountID==connection.accountID && $0.shared?.gameID==remote.id}){app.fetchSharedDefaultCover(remote,connection:connection,game:game)}
+     }
+    }
     catch{
      if (error as? SharedRequestError)?.statusCode==401{self.page = .login;self.feedback="登录已过期"}
      else{self.page = .retry;self.feedback=self.friendly(error)}
@@ -257,7 +268,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
    var count=0
    for (game,checkbox,popup) in rows where checkbox.state == .on {
     guard game.entries.indices.contains(popup.indexOfSelectedItem) else{continue}
-    _ = try app.store.addShared(game,entry:game.entries[popup.indexOfSelectedItem],connection:connection,mountRoot:app.root);checkbox.state = .off;count+=1
+    let added=try app.store.addShared(game,entry:game.entries[popup.indexOfSelectedItem],connection:connection,mountRoot:app.root);app.fetchSharedDefaultCover(game,connection:connection,game:added);checkbox.state = .off;count+=1
    }
    app.showLibrary();finish("已添加 \(count) 款游戏。");selectionChanged()
   }catch{finish(friendly(error),error:true)}
@@ -268,14 +279,29 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   let field=NSTextField(string:pin ?? "");field.placeholderString="SHA-256 证书指纹（可选）";field.frame=NSRect(x:0,y:0,width:420,height:26);alert.accessoryView=field;alert.addButton(withTitle:"保存");alert.addButton(withTitle:"取消")
   if alert.runModal() == .alertFirstButtonReturn {do{pin=try SharedServerAddress.certificatePin(field.stringValue);status(pin==nil ? "":"已应用管理员提供的连接设置。")}catch{status(friendly(error),error:true)}}
  }
- private func importInvitation(){
+ func beginAdministratorSetup(){importInvitation(administratorOnly:true)}
+ private func importInvitation(administratorOnly:Bool=false){
   guard let window,!loading else{return}
   let panel=NSOpenPanel();panel.title="选择邀请文件";panel.prompt="导入";panel.canChooseFiles=true;panel.canChooseDirectories=false;panel.allowsMultipleSelection=false
   panel.beginSheetModal(for:window){[weak self] response in
    guard let self,!self.closed,response == .OK,let url=panel.url else{return}
    do{
     let handle=try FileHandle(forReadingFrom:url);defer{try? handle.close()}
-    let invitation=try SharedServerInvitation.read(handle.read(upToCount:4097) ?? Data())
+    let data=try handle.read(upToCount:4097) ?? Data()
+    if administratorOnly || (try? JSONSerialization.jsonObject(with:data) as? [String:Any])?["kind"] as? String=="administrator-setup" {
+     let invitation=try AdministratorSetupInvitation.read(data)
+     self.administratorSetupWindow=AdministratorSetupWindowController(invitation:invitation){[weak self] response in
+      guard let self,let app=self.app else{return}
+      do{
+       var connection=SharedConnection(name:invitation.name ?? "GameShelf",address:invitation.address,serverID:response.serverID,accountID:response.user.id,username:response.user.username,isAdministrator:response.user.admin,certificateSHA256:invitation.certificateSHA256,rememberLogin:true)
+       if let existing=self.store.connections.first(where:{$0.serverID==connection.serverID && $0.accountID==connection.accountID}){connection.id=existing.id}
+       try SharedCredentialStore.save(token:response.token,connectionID:connection.id);try self.store.save(connection);app.sharedAccessTokens[connection.id]=response.token
+       self.selected=connection;self.loading=false;self.page = .catalog;self.render();self.loadCatalog()
+      }catch{self.finish(error.localizedDescription,error:true)}
+     }
+     self.administratorSetupWindow?.showWindow(nil);self.administratorSetupWindow?.window?.makeKeyAndOrderFront(nil);return
+    }
+    let invitation=try SharedServerInvitation.read(data)
     self.operation=UUID();self.selected=nil;self.server=nil;self.password.stringValue="";self.pin=invitation.certificateSHA256;self.invitationName=invitation.name;self.address.stringValue=invitation.address;self.page = .address;self.feedback=invitation.name.map{"邀请已载入 · "+$0} ?? "邀请已载入";self.feedbackIsError=false;self.render()
    }catch{self.finish("无法读取这个邀请文件，请向管理员确认。",error:true)}
   }
@@ -283,6 +309,13 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
  private func openAdministration(){
   guard let connection=selected,connection.isAdministrator,let url=try? SharedServerAddress.parse(connection.address) else{return}
   NSWorkspace.shared.open(url)
+ }
+ private func bindPersonalLibrary(){
+  guard let connection=selected,let app else{return}
+  let alert=NSAlert();alert.messageText="绑定到 "+connection.username+"？"
+  alert.informativeText="游戏名称、封面、分类、收藏和时长将保存到「"+connection.name+"」的个人账号。游戏文件与存档位置保留。"
+  alert.addButton(withTitle:"绑定");alert.addButton(withTitle:"取消")
+  if alert.runModal() == .alertFirstButtonReturn{app.bindPersonalLibrary(to:connection)}
  }
  private func logout(){
   guard let connection=selected,let app else{return}

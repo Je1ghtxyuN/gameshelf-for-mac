@@ -41,3 +41,8 @@ PYTHONPATH="$PWD/Server" PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover 
 
 run_swift SharedWebSaveStore Sources/SharedWebSaveStore.swift
 run_swift SharedWebKitIntegration Sources/Core.swift Sources/GameResourceServer.swift Sources/SharedWebSaveStore.swift Sources/SharedWebKit.swift
+
+run_swift PersonalLibrary Sources/Core.swift Sources/SharedLibrary.swift Sources/PersonalLibrary.swift
+run_swift PersonalLibraryMedia Sources/Core.swift Sources/SharedLibrary.swift Sources/PersonalLibraryMedia.swift
+run_swift Onboarding Sources/Core.swift Sources/SharedLibrary.swift Sources/Onboarding.swift
+"$node_bin" --test Server/tests/test_admin_ui.js

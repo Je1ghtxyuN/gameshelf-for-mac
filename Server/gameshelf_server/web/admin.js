@@ -57,6 +57,19 @@ async function refresh() {
   const form = $('grant-form');
   choices(form.elements.userID, users.filter(u => !u.disabled), u => u.username);
   choices(form.elements.gameID, games, g => g.title + ' · ' + g.id.slice(0, 8));
+  $('covers').replaceChildren(...games.map(g => {
+    const row = node('div', g.title);
+    const input = node('input'); input.type = 'file'; input.accept = 'image/jpeg';
+    input.setAttribute('aria-label', 'JPEG · ' + g.title);
+    row.append(input, button('Upload cover 上传封面', async () => {
+      const file = input.files[0];
+      if (!file || file.size > 256 * 1024) throw new Error('JPEG ≤ 256 KiB');
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte);
+      await api('/api/admin/games/' + g.id + '/cover', 'POST', {data: btoa(binary)});
+      input.value = '';
+    })); return row;
+  }));
   $('grants').replaceChildren(...grants.map(g => node('div',
     (users.find(u => u.id === g.userID)?.username || g.userID) + ' → ' +
     (games.find(game => game.id === g.gameID)?.title || g.gameID))));
@@ -107,3 +120,22 @@ $('download-invitation').onclick = () => work(async () => {
   try { link.click(); }
   finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 });
+
+$('setup').onsubmit = e => { e.preventDefault(); work(async () => {
+  const f = e.target, file = f.elements.invitation.files[0];
+  const password = f.elements.password.value, confirmation = f.elements.confirmation.value;
+  f.elements.password.value = ''; f.elements.confirmation.value = '';
+  if (password !== confirmation) throw new Error('Passwords do not match 密码不一致');
+  if (!file || file.size > 4096) throw new Error('Invalid private invitation 无效私有邀请');
+  const invitation = JSON.parse(await file.text());
+  if (invitation.version !== 1 || invitation.kind !== 'administrator-setup' || typeof invitation.setupToken !== 'string' ||
+      new URL(invitation.address).origin !== window.location.origin)
+    throw new Error('Private invitation does not match 此私有邀请不匹配');
+  const result = await api('/api/setup', 'POST', {setupToken: invitation.setupToken, username: f.elements.username.value, password});
+  token = result.token; f.reset(); $('setup').hidden = true; $('login').hidden = true;
+  $('account').textContent = result.user.username; $('admin').hidden = false; await refresh();
+}); };
+api('/api/server-info').then(info => {
+  if (token) return;
+  $('setup').hidden = !info.setupRequired; $('login').hidden = info.setupRequired;
+}).catch(e => message(e.message));

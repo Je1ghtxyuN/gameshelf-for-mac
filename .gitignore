@@ -29,3 +29,15 @@ Engines/
 # Local development notes and deployment acceptance records
 docs/superpowers/
 Server/VALIDATION.md
+
+# Per-installation accounts, setup authority and private metadata
+shared-connections.json
+personal-library-binding.json
+onboarding.json
+administrator-setup.json
+administrator.json
+GameShelf-invitation.json
+gameshelf-invitation.json
+bootstrap-password
+*.sqlite3
+*.sqlite3-*

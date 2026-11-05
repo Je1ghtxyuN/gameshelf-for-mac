@@ -87,7 +87,7 @@ class HTTPTests(unittest.TestCase):
         self.s.display_name='Home library'
         status,info,headers=self.call('GET','/api/server-info')
         self.assertEqual(status,200)
-        self.assertEqual(set(info),{'name','serverID','version'})
+        self.assertEqual(set(info),{'name','serverID','version','setupRequired'})
         self.assertEqual(info['name'],'Home library')
         self.assertEqual(info['serverID'],self.s.server_id)
         self.assertNotIn(str(self.source),json.dumps(info))

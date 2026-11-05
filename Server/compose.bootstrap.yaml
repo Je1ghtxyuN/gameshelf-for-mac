@@ -1,0 +1,11 @@
+# Optional existing password-file bootstrap instead of private setup invitation.
+# docker compose -f compose.yaml -f compose.bootstrap.yaml up -d
+services:
+  gateway:
+    environment:
+      GAMESHELF_BOOTSTRAP_USERNAME: ${GAMESHELF_BOOTSTRAP_USERNAME:?Set initial administrator username}
+      GAMESHELF_BOOTSTRAP_PASSWORD_FILE: /run/secrets/bootstrap_password
+    secrets: [bootstrap_password]
+secrets:
+  bootstrap_password:
+    file: ${GAMESHELF_BOOTSTRAP_PASSWORD_FILE:?Set private password file outside repository}

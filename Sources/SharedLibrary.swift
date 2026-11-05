@@ -64,6 +64,7 @@ struct SharedServerInvitation:Codable {
  var certificateSHA256:String?
  static func read(_ data:Data)throws->SharedServerInvitation {
   guard data.count<=4096 else{throw LibraryError("邀请文件过大。")}
+  guard let object=try JSONSerialization.jsonObject(with:data) as? [String:Any],object["setupToken"]==nil,object["kind"]==nil else{throw LibraryError("此文件用于管理员初始化，请使用创建共享库入口。")}
   var invitation=try JSONDecoder().decode(Self.self,from:data)
   guard invitation.version==1 else{throw LibraryError("此邀请文件版本暂不支持。")}
   invitation.address=try SharedServerAddress.parse(invitation.address).absoluteString
@@ -76,11 +77,12 @@ struct SharedCatalogGame:Codable,Equatable,Identifiable {
  var id:String
  var title:String
  var entries:[Candidate]
+ var coverSHA256:String?=nil
 }
 struct SharedCatalog:Codable {var games:[SharedCatalogGame]}
 struct SharedLoginUser:Codable {var id:String;var username:String;var admin:Bool}
 struct SharedLoginResponse:Codable {var token:String;var user:SharedLoginUser;var serverID:String}
-struct SharedServerInfo:Codable {var name:String;var serverID:String;var version:String}
+struct SharedServerInfo:Codable {var name:String;var serverID:String;var version:String;var setupRequired:Bool?=nil}
 struct SharedRequestError:LocalizedError {
  let statusCode:Int
  var errorDescription:String? {

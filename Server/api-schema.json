@@ -76,6 +76,11 @@
         },
         "saveIsolation": {
           "type": "string"
+        },
+        "coverSHA256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Optional identity of administrator default cover; not a personal override."
         }
       }
     },
@@ -264,6 +269,186 @@
           "description": "Optional leaf certificate DER SHA-256; not an SPKI hash."
         }
       }
+    },
+    "setupInvitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "address",
+        "setupToken",
+        "kind"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "address": {
+          "type": "string",
+          "format": "uri",
+          "description": "Explicitly configured HTTPS root URL; no credentials, path, query or fragment."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "certificateSHA256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Optional leaf certificate DER SHA-256; not an SPKI hash."
+        },
+        "setupToken": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 256
+        },
+        "kind": {
+          "const": "administrator-setup"
+        }
+      }
+    },
+    "personalGame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "favorite",
+        "collectionIDs",
+        "playtimeSeconds"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "At most 1024 UTF-8 bytes."
+        },
+        "favorite": {
+          "type": "boolean"
+        },
+        "collectionIDs": {
+          "type": "array",
+          "maxItems": 200,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "playtimeSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 31557600000
+        },
+        "lastPlayed": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 253402300799
+        }
+      }
+    },
+    "personalCollection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "description": "At most 240 UTF-8 bytes."
+        }
+      }
+    },
+    "personalSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "games",
+        "collections"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "games": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/personalGame"
+          }
+        },
+        "collections": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/personalCollection"
+          }
+        }
+      }
+    },
+    "personalLibrary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deviceID",
+        "revision",
+        "snapshot"
+      ],
+      "properties": {
+        "deviceID": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "snapshot": {
+          "$ref": "#/$defs/personalSnapshot"
+        }
+      }
+    },
+    "cover": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "data",
+        "mime",
+        "sha256"
+      ],
+      "properties": {
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "description": "JPEG bytes, at most 262144 decoded bytes. Structural marker/dimension validation; 8-bit baseline/extended/progressive, 1 or 3 components, at most 2048×2048."
+        },
+        "mime": {
+          "const": "image/jpeg"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
     }
   },
   "endpoints": {
@@ -440,9 +625,93 @@
       "response": {
         "name": "string",
         "serverID": "string",
-        "version": "string"
+        "version": "string",
+        "setupRequired": "bool, true only when users table is empty (including no disabled users)"
       },
       "description": "Public display identity only; does not enumerate games or accounts."
+    },
+    "POST /api/setup": {
+      "auth": false,
+      "body": {
+        "setupToken": "private one-use capability from administrator-setup.json",
+        "username": "ASCII login 1..64",
+        "password": "12..1024 characters"
+      },
+      "response": {
+        "$ref": "#/$defs/login"
+      },
+      "description": "First administrator only. Serialized SQLite transaction checks empty users and setup digest, creates administrator and login token, consumes capability. Invalid capability 403; initialized service 409. Invalid input rolls back. Ordinary invitation cannot initialize. Shares login rate limit. Body at most 16 KiB."
+    },
+    "POST /api/admin/users/{id}/rename": {
+      "admin": true,
+      "body": {
+        "username": "ASCII login 1..64"
+      },
+      "response": {
+        "$ref": "#/$defs/user"
+      },
+      "description": "Only authenticated administrator self-rename. Preserves account ID, password, uid, roles, grants, tokens, leases and metadata. Other account target 403; duplicate username 409."
+    },
+    "GET /api/personal-library": {
+      "response": {
+        "libraries": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/personalLibrary"
+          }
+        }
+      },
+      "description": "Authenticated account only, including administrators. No user selector. Empty account returns libraries:[]. At most 8 libraries/account and at most 4 MiB of actual UTF-8 HTTP response JSON (including escaping, spaces and full snapshot envelopes). Query reads at most 9 small device descriptors before loading any bounded snapshot. Legacy overquota data returns 413 without truncation or deletion; individual reads remain available."
+    },
+    "GET /api/personal-library/{deviceUUID}": {
+      "response": {
+        "$ref": "#/$defs/personalLibrary"
+      },
+      "description": "Missing device returns 404 without creating a row. First POST uses expectedRevision:0. UUID input accepts uppercase or lowercase canonical hyphenated strings; all device, game and collection UUIDs in successful responses are normalized lowercase hyphenated. Envelope is exactly deviceID/revision/snapshot; account namespace comes from the authenticated token, with no arbitrary account selector."
+    },
+    "POST /api/personal-library/{deviceUUID}": {
+      "body": {
+        "expectedRevision": "integer 0..9007199254740990; initial 0",
+        "snapshot": {
+          "$ref": "#/$defs/personalSnapshot"
+        }
+      },
+      "response": {
+        "$ref": "#/$defs/personalLibrary"
+      },
+      "description": "Atomic account/device-scoped CAS, revision increments once. Stale revision 409 without mutation. Snapshot compact UTF-8 JSON at most 512 KiB; HTTP body at most 512 KiB + 1024 bytes. Rejects extra fields at every level, duplicate game/collection UUIDs, undefined or repeated collection references, nonfinite/negative times and duplicate JSON keys. No paths, executable resources or saves. Maximum 1000 games/200 collections; titles ≤1024 UTF-8 bytes, collection names ≤240 UTF-8 bytes; playtimeSeconds in 0..31557600000. Snapshot UUIDs are normalized without changing identity. Account limit: 8 device libraries and 4 MiB for the complete full-snapshot list using the exact HTTP JSON encoder. Creation/update violating either returns 413 and rolls back. A successful CAS also atomically deletes personal cover blobs whose games are absent from the new snapshot."
+    },
+    "POST /api/personal-library/{deviceUUID}/covers/{gameUUID}": {
+      "body": {
+        "data": "strict base64 JPEG, decoded ≤256 KiB"
+      },
+      "response": {
+        "$ref": "#/$defs/cover"
+      },
+      "description": "Atomic SQLite blob replacement; validation failure leaves previous image intact. HTTP body at most 350552 bytes. Unknown fields rejected. Requires an existing device library and game in that account’s snapshot; unknown device/game 404. Cover rows are bounded by 8 libraries × 1000 game UUIDs (each ≤256 KiB); repeated uploads replace the existing row. Removed games are pruned in the same metadata CAS transaction. Legacy accounts with more than 8 device libraries cannot add/replace cover blobs (413); individual reads remain available."
+    },
+    "POST /api/admin/games/{gameID}/cover": {
+      "body": {
+        "data": "strict base64 JPEG, decoded ≤256 KiB"
+      },
+      "response": {
+        "$ref": "#/$defs/cover"
+      },
+      "description": "Atomic SQLite blob replacement; validation failure leaves previous image intact. HTTP body at most 350552 bytes. Unknown fields rejected.",
+      "admin": true
+    },
+    "GET /api/personal-library/{deviceUUID}/covers/{gameUUID}": {
+      "response": {
+        "$ref": "#/$defs/cover"
+      },
+      "description": "Private to authenticated account/device/game, including against other administrators. Missing 404. Independent of snapshot revision; no user selector. Never overwrites a canonical cover. Requires the device library and game UUID in that authenticated account’s current snapshot; unknown device/game returns 404. Other accounts cannot insert or access covers through matching UUIDs."
+    },
+    "GET /api/games/{gameID}/cover": {
+      "response": {
+        "$ref": "#/$defs/cover"
+      },
+      "description": "Requires current explicit grant, including administrators. No grant 403; granted missing cover 404. Only published gateway game IDs (existing 32-hex format)."
     }
   },
   "statusCodes": {
@@ -451,8 +720,8 @@
     "401": "missing, expired or revoked token/invalid login",
     "403": "admin required or no game grant",
     "404": "not found or another account's lease",
-    "409": "active writer/changed edition/expired heartbeat/duplicate user or root",
-    "413": "body exceeds 16 KiB",
+    "409": "CAS revision conflict, initialized service, duplicate username/root, active writer, changed edition or expired heartbeat",
+    "413": "Default body >16 KiB; dedicated personal snapshot ≤512 KiB (+1024-byte envelope); cover ≤256 KiB decoded (+base64 envelope). Other routes keep 16 KiB. Account metadata quota: max 8 libraries and full actual JSON list max 4 MiB; quota failures roll back writes.",
     "415": "JSON required",
     "429": "login throttled",
     "503": "unavailable source/mount/export/shutdown pending; never retry a launch without successful lease"
@@ -500,5 +769,12 @@
     "fallback": "Keep all previously eligible Wine/language entrances and platform editions; mismatch, missing, linked, special or oversized metadata never opts into WebKit. Unknown shared web/native engines remain unsupported without a separate supported adapter.",
     "publication": "Scanning does not change published games. Explicit re-publication may refresh entrances of an unchanged edition while preserving its game ID, grants and private state.",
     "saveSupport": "Requires the client shared WebKit account/game-private save adapter; this server change recognizes and advertises only the validated profile."
+  },
+  "setup": {
+    "file": "/state/administrator-setup.json (or configured GAMESHELF_STATE)",
+    "schema": {
+      "$ref": "#/$defs/setupInvitation"
+    },
+    "permissions": "0600, gateway-owned regular single-link file. Empty service and configured GAMESHELF_PUBLIC_ADDRESS (or PUBLIC_ORIGIN) only; name and pin use existing invitation configuration. Never derives Host. Random setup token only in this private file; only SHA-256 digest in database. Stable over restart when configuration matches; configuration changes regenerate capability. Removed/invalidated after first account; ordinary invitation route never contains capability. Not served over HTTP. Deliver privately, never publish/commit/log. Removing public address configuration invalidates any previous capability."
   }
 }

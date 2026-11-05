@@ -11,6 +11,8 @@ import threading
 import time
 
 from .service import APIError, text
+from .common import wire_json
+from .accounts import UUID_PATTERN, SNAPSHOT_LIMIT, COVER_LIMIT
 
 ID = r'([a-f0-9]{32})'
 ASSETS = {'/': ('admin.html', 'text/html; charset=utf-8'),
@@ -28,6 +30,7 @@ class Application:
         self.login_attempts = deque()
         self.login_limit = 30  # Global per minute: bounds PBKDF2 work and memory.
         self.rate_lock = threading.Lock()
+        service.prepare_setup(self.public_address,getattr(service,"display_name","GameShelf"),self.certificate_sha256)
     def throttle_login(self):
         with self.rate_lock:
             now = time.monotonic()
@@ -42,10 +45,13 @@ class Application:
     def dispatch(self, method, path, data, token):
         s = self.service
         if method == 'GET' and path == '/api/server-info':
-            return dict(name=getattr(s,'display_name','GameShelf'),serverID=s.server_id,version='1.1.0')
+            return dict(name=getattr(s,'display_name','GameShelf'),serverID=s.server_id,version='1.1.0',setupRequired=s.setup_required())
         if method == 'POST' and path == '/api/login':
             self.throttle_login()
             return s.login(data.get('username'), data.get('password'))
+        if method == 'POST' and path == '/api/setup':
+            self.throttle_login()
+            return s.setup_admin(data)
         scan=re.fullmatch('/api/admin/roots/'+ID+'/scan',path)
         if method=='POST' and scan:
             def authorize_scan():
@@ -83,6 +89,12 @@ class Application:
                         return dict(users=s.users())
                     if method == 'POST':
                         return s.create_user(data.get('username'), data.get('password'), data.get('admin',False))
+                m = re.fullmatch('/api/admin/users/'+ID+'/rename', path)
+                if method == 'POST' and m:
+                    return s.rename_self(user,m[1],data)
+                m = re.fullmatch('/api/admin/games/'+ID+'/cover', path)
+                if method == 'POST' and m:
+                    return s.game_cover(user,m[1],data)
                 m = re.fullmatch('/api/admin/users/'+ID+'/disable', path)
                 if method == 'POST' and m:
                     s.disable_user(m[1]); return {}
@@ -92,6 +104,17 @@ class Application:
                     if method == 'POST':
                         s.grant(text(data.get('userID')), text(data.get('gameID')), data.get('allowed')); return {}
                 raise APIError(404, 'Endpoint not found')
+            if method == 'GET' and path == '/api/personal-library':
+                return s.personal_libraries(user)
+            m=re.fullmatch('/api/personal-library/'+UUID_PATTERN,path)
+            if method in ('GET','POST') and m:
+                return s.personal_library(user,m[1],data if method=='POST' else None)
+            m=re.fullmatch('/api/personal-library/'+UUID_PATTERN+'/covers/'+UUID_PATTERN,path)
+            if method in ('GET','POST') and m:
+                return s.personal_cover(user,m[1],m[2],data if method=='POST' else None)
+            m=re.fullmatch('/api/games/'+ID+'/cover',path)
+            if method=='GET' and m:
+                return s.game_cover(user,m[1])
             if method == 'GET' and path == '/api/catalog':
                 return s.catalog(user)
             if method == 'POST' and path == '/api/logout':
@@ -119,7 +142,7 @@ class Handler(BaseHTTPRequestHandler):
     def send_error(self, code, message=None, explain=None):
         self.reply(code, dict(error=dict(code=code, message='Request rejected')))
     def reply(self, status, data, content_type='application/json; charset=utf-8', *, download=None):
-        body = json.dumps(data, ensure_ascii=False, allow_nan=False).encode() if isinstance(data, dict) else data
+        body = wire_json(data) if isinstance(data, dict) else data
         self.send_response(status)
         self.send_header('Content-Type',content_type)
         self.send_header('Content-Length',str(len(body)))
@@ -161,14 +184,25 @@ class Handler(BaseHTTPRequestHandler):
                     raise APIError(400, 'Invalid content length') from None
                 if length < 0:
                     raise APIError(400, 'Invalid content length')
-                if length > 16384:
+                limit=16384
+                if self.command=='POST' and re.fullmatch('/api/personal-library/'+UUID_PATTERN,path):
+                    limit=SNAPSHOT_LIMIT+1024
+                elif self.command=='POST' and (re.fullmatch('/api/personal-library/'+UUID_PATTERN+'/covers/'+UUID_PATTERN,path) or re.fullmatch('/api/admin/games/'+ID+'/cover',path)):
+                    limit=4*((COVER_LIMIT+2)//3)+1024
+                if length > limit:
                     raise APIError(413, 'Request body too large')
                 if length:
                     if self.headers.get_content_type() != 'application/json':
                         raise APIError(415, 'JSON content type required')
                     raw = self.rfile.read(length)
                     try:
-                        data = json.loads(raw)
+                        def unique_object(pairs):
+                            result={}
+                            for key,value in pairs:
+                                if key in result: raise ValueError('Duplicate JSON key')
+                                result[key]=value
+                            return result
+                        data = json.loads(raw,object_pairs_hook=unique_object,parse_constant=lambda value: (_ for _ in ()).throw(ValueError('Nonfinite JSON')))
                     except (ValueError, UnicodeError, RecursionError):
                         raise APIError(400, 'Invalid JSON') from None
                     if not isinstance(data,dict):

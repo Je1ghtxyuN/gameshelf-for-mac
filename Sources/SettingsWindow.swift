@@ -193,10 +193,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
  }
  private func card(_ title: String, detail: String? = nil, views: [NSView] = []) {
   var contents: [NSView] = [label(title, size: 14, weight: .semibold)]
-  if let detail { contents.append(label(detail, secondary: true)) }
   contents.append(contentsOf: views)
   let stack = vertical(contents, spacing: 11)
   let box = NSView()
+  box.toolTip = detail
   box.wantsLayer = true
   box.layer?.cornerRadius = 12
   box.layer?.backgroundColor = NSColor.white.cgColor
@@ -254,8 +254,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
    button.setAccessibilityValue(selected ? "已选择" : "")
   }
   add(label(titles[selectedPage], size: 28, weight: .bold))
-  let subtitles = ["管理游戏库，按自己的方式开始游玩。", "让游戏库更容易浏览与识别。", "查看数据位置与所在磁盘的可用空间。", "使用本机已有环境，在独立窗口中运行游戏。", "你的原生 macOS 游戏库。"]
-  add(label(subtitles[selectedPage], secondary: true))
   if selectedPage == 2 || selectedPage == 3 {
    let notice = label("", size: 12, secondary: true)
    restriction = notice
@@ -266,8 +264,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
    let count = label("\(app.store.games.count) 款游戏", size: 30, weight: .semibold)
    libraryCount = count
    card("我的游戏库", detail: "已加入 GameShelf 的游戏", views: [count])
-   card("导入只添加引用", detail: "导入后，游戏文件夹保留在原来的位置，GameShelf 不会自动复制游戏。")
-   card("离线游玩", detail: "需要离线使用时，请在游戏属性中明确选择「下载到本地」。仅导入 NAS 上的游戏，并不代表已经保存在本机。")
+   if let binding=(try? PersonalLibraryBindingStore(root:app.root))?.binding,
+      let connection=(try? SharedConnectionStore(root:app.root))?.connections.first(where:{$0.serverID==binding.serverID && $0.accountID==binding.accountID}) {
+    let name=connection.username+(connection.isAdministrator ? " · 管理员":"")
+    card("个人账号",views:[label(name,size:16,weight:.medium),actions([button("管理账号"){[weak app] in app?.showSharedLibrary()},button("同步资料"){[weak app] in app?.syncPersonalLibrary(force:true)}])])
+   }
   case 1:
    let checkbox = SettingsActionButton("导入时自动联网匹配封面") {}
    checkbox.setButtonType(.switch)
@@ -287,8 +288,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
    add(actions([button("刷新磁盘信息") { [weak self] in self?.refreshVolumes() }]))
   case 3:
    card("Wine / Wineskin 来源", detail: "使用本机已有的 Wineskin 应用创建独立运行副本。GameShelf 不安装 Wine 引擎。", views: [path(wineSource), actions([finder(wineSource), button("选择已有环境…", changesLocation: true) { [weak self] in self?.chooseWine() }])])
-   card("游戏窗口", detail: "Windows 游戏通过 Wine / Wineskin 在独立窗口中运行；原生 macOS 游戏使用自己的应用窗口。支持的网页导出游戏可在 GameShelf 内嵌运行。")
-   card("游戏专属设置", detail: "窗口尺寸、帧率显示及其他单款游戏选项，可在封面菜单的「属性」中调整。")
   default:
    let image = NSImageView(image: NSApp.applicationIconImage ?? NSImage(size: NSSize(width: 64, height: 64)))
    image.imageScaling = .scaleProportionallyUpOrDown
@@ -297,9 +296,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
    let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
    var versionText = version.map { "版本 " + $0 } ?? "版本信息未提供"
    if let build { versionText += "（构建 \(build)）" }
-   card("GameShelf", detail: versionText, views: [image, label("适用于 macOS 15 及以上版本", secondary: true)])
-   card("本地与 NAS，统一收藏", detail: "原位置导入、封面浏览与多种游戏运行方式，让分散的游戏有一个共同入口。")
-   card("运行与存档", detail: "Windows 与 macOS 程序在各自窗口运行，支持的网页游戏可内嵌运行。兼容性因游戏与环境而异；应用不提供即时快照。Wine / Wineskin 沿用本机已有安装及其许可证。")
+   card("GameShelf", detail: versionText, views: [image, label(versionText), label("macOS 15+", secondary: true)])
   }
   refreshActivity()
  }
@@ -352,7 +349,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
   formatter.countStyle = .file
   let name = info.name.isEmpty ? "所在磁盘" : info.name
   if let fraction = info.usedFraction, fraction.isFinite, let capacity = info.capacity, let available = info.available, info.isMounted {
-   status.stringValue = "\(name) · 磁盘总容量 \(formatter.string(fromByteCount: capacity)) · 可用 \(formatter.string(fromByteCount: available))\n磁盘整体用量（包含其他应用与文件）"
+   status.stringValue = "\(name) · 磁盘总容量 \(formatter.string(fromByteCount: capacity)) · 可用 \(formatter.string(fromByteCount: available))"
   } else { status.stringValue = "\(name) · \(info.statusText)" }
   if let fraction = info.usedFraction, fraction.isFinite, info.isMounted {
    progress.doubleValue = min(1, max(0, fraction))

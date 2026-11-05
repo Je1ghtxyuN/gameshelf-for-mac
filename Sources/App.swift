@@ -83,6 +83,9 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  var playtimeRecorder:PlaytimeRecorder?
  var pendingPlaytimeError:String?
  var playtimeTimer:Timer?
+ var personalLibraryTimer:Timer?
+ var personalSyncing=false
+ var onboardingWindow:OnboardingWindowController?
  var playtimeLabels:[UUID:NSTextField]=[:]
  var playtimeReportedFailure=false
  var container:NSView!
@@ -135,11 +138,15 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   if let error=playtimeError{showStatus("时长记录暂不可用，已有数据保留："+error.localizedDescription)}
   let timer=Timer(timeInterval:15,repeats:true){[weak self] _ in self?.checkpointPlaytime()}
   playtimeTimer=timer;RunLoop.main.add(timer,forMode:.common)
+  let profileTimer=Timer(timeInterval:60,repeats:true){[weak self] _ in self?.syncPersonalLibrary()}
+  personalLibraryTimer=profileTimer;RunLoop.main.add(profileTimer,forMode:.common)
+  syncPersonalLibrary()
   let workspace=NSWorkspace.shared.notificationCenter
   workspace.addObserver(self,selector:#selector(playtimeWillSleep),name:NSWorkspace.willSleepNotification,object:nil)
   workspace.addObserver(self,selector:#selector(playtimeDidWake),name:NSWorkspace.didWakeNotification,object:nil)
   workspace.addObserver(self,selector:#selector(playtimeApplicationEnded(_:)),name:NSWorkspace.didTerminateApplicationNotification,object:nil)
   if let i=CommandLine.arguments.firstIndex(of:"--open-game"),CommandLine.arguments.indices.contains(i+1){importURLs([URL(fileURLWithPath:CommandLine.arguments[i+1])])}
+  else{showOnboardingIfNeeded()}
  }
  func setupMenu(){
   let menu=NSMenu();NSApp.mainMenu=menu
@@ -866,7 +873,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
      let path=try await CoverArt.save(selection.match,to:coverRoot,id:game.id)
      await MainActor.run {
       guard var current=self.store.games.first(where:{$0.id==game.id}),current.cover==selection.prior,(!automatic || current.cover==nil) else{return}
-      current.cover=path
+      current.cover=path;current.coverOrigin=nil;current.defaultCoverSHA256=nil
       do{try self.store.update(current);self.renderCards()}catch{if !automatic{self.errorAlert(error)}}
      }
     }
@@ -881,7 +888,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
    do{let dir=self.store.root.appendingPathComponent("Covers");try FileManager.default.createDirectory(at:dir,withIntermediateDirectories:true)
     let target=dir.appendingPathComponent(game.id.uuidString+"-"+UUID().uuidString+"."+u.pathExtension)
     try Data(contentsOf:u).write(to:target,options:.atomic)
-    var updated=game;updated.cover=target.path;try self.store.update(updated);self.renderCards()
+    var updated=game;updated.cover=target.path;updated.coverOrigin=nil;updated.defaultCoverSHA256=nil;try self.store.update(updated);self.renderCards()
    }catch{self.errorAlert(error)}
   }
  }

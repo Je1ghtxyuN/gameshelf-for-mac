@@ -31,8 +31,6 @@ services:
       GAMESHELF_PUBLIC_ADDRESS: ${GAMESHELF_PUBLIC_ADDRESS:-}
       GAMESHELF_CERTIFICATE_SHA256: ${GAMESHELF_CERTIFICATE_SHA256:-}
       GAMESHELF_PUBLIC_ORIGIN: ${GAMESHELF_PUBLIC_ORIGIN:-}
-      GAMESHELF_BOOTSTRAP_USERNAME: ${GAMESHELF_BOOTSTRAP_USERNAME:?Set the initial administrator username}
-      GAMESHELF_BOOTSTRAP_PASSWORD_FILE: /run/secrets/bootstrap_password
     volumes:
       - type: bind
         source: ${GAMESHELF_SOURCE_DIR:?Set a frozen game source directory}
@@ -53,10 +51,6 @@ services:
         read_only: true
         bind:
           create_host_path: false
-    secrets: [bootstrap_password]
     tmpfs:
       - /run:rw,nosuid,nodev,noexec,size=32m
       - /tmp:rw,nosuid,nodev,noexec,size=32m
-secrets:
-  bootstrap_password:
-    file: ${GAMESHELF_BOOTSTRAP_PASSWORD_FILE:?Set path to a private password file outside the repository}
