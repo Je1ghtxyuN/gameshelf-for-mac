@@ -1,8 +1,6 @@
 import Foundation
 import Darwin
 import NetFS
-import Security
-import LocalAuthentication
 
 private func check(_ value: Bool, _ message: String) throws {
  if !value { throw NSError(domain: "NetworkLibraryMountTests", code: 1,
@@ -63,13 +61,13 @@ private final class MountFixture {
   }
   for (name, run) in [("validation", validation), ("mounting", mounting),
                        ("identity", refusalAndIdentity), ("target inspection", realTargetInspection),
-                       ("credentials", credentials), ("persisted recovery", persistedRecovery)] {
+                       ("persisted recovery", persistedRecovery)] {
    do { try run() } catch {
     throw NSError(domain: "NetworkLibraryMountTests", code: 5,
      userInfo: [NSLocalizedDescriptionKey: name + ": " + error.localizedDescription])
    }
   }
-  print("PASS NetworkLibraryMount: validation, secret separation, mount identity/ownership, safe targets/unmount, Keychain contract, persisted recovery across processes (no network mounts or Keychain writes)")
+  print("PASS NetworkLibraryMount: validation, secret separation, mount identity/ownership, safe targets/unmount, persisted recovery across processes (no network mounts)")
  }
  static func validation() throws {
   let url = try fixtureShare.mountURL()
@@ -198,75 +196,6 @@ private final class MountFixture {
   for url in [URL(string: "https://example.com/target")!, URL(fileURLWithPath: "/"), URL(string: "file://otherhost/tmp/target")!] {
    try rejects { _ = try NetworkLibraryMount.mount(share: fixtureShare, at: url, operations: MountFixture().operations) }
   }
- }
- static func credentials() throws {
-  // Type-check the UI entry points without calling the real Keychain.
-  let save: (String, UUID) throws -> Void = SharedCredentialStore.save(token:connectionID:)
-  let saveFromWindow: (String, UUID) throws -> Void = SharedCredentialStore.save(_:connectionID:)
-  let read: (UUID) throws -> String? = SharedCredentialStore.read(connectionID:)
-  let delete: (UUID) throws -> Void = SharedCredentialStore.delete(connectionID:)
-  _ = (save, saveFromWindow, read, delete)
-  var items: [String: Data] = [:]
-  var queries: [[String: Any]] = []
-  let ops = SharedCredentialStore.Operations(add: { query in
-   queries.append(query)
-   let key = query[kSecAttrAccount as String] as! String
-   if items[key] != nil { return errSecDuplicateItem }
-   items[key] = query[kSecValueData as String] as? Data
-   return errSecSuccess
-  }, update: { query, attributes in
-   queries.append(query)
-   let key = query[kSecAttrAccount as String] as! String
-   guard items[key] != nil else { return errSecItemNotFound }
-   items[key] = attributes[kSecValueData as String] as? Data
-   try! check(attributes[kSecAttrAccessible as String] as? String == (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String), "Token must stay on this device")
-   return errSecSuccess
-  }, copy: { query in
-   queries.append(query)
-   return items[query[kSecAttrAccount as String] as! String].map { (errSecSuccess, $0 as CFData) } ?? (errSecItemNotFound, nil)
-  }, delete: { query in
-   queries.append(query)
-   return items.removeValue(forKey: query[kSecAttrAccount as String] as! String) == nil ? errSecItemNotFound : errSecSuccess
-  })
-  let store = SharedCredentialStore(operations: ops), a = UUID(), b = UUID()
-  try check(try store.read(for: a) == nil, "Missing token is nil")
-  try store.save(token: "token-A", for: a); try store.save(token: "token-B", for: b)
-  try store.save(token: "replacement-A", for: a)
-  try check(try store.read(for: a) == "replacement-A", "Save updates existing token")
-  try check(try store.read(for: b) == "token-B", "Connections must remain isolated")
-  try store.delete(for: a); try store.delete(for: a)
-  try check(try store.read(for: a) == nil && store.read(for: b) == "token-B", "Delete affects only specified connection")
-  for query in queries {
-   try check(query[kSecClass as String] as? String == (kSecClassGenericPassword as String), "Generic password only")
-   try check(query[kSecAttrService as String] as? String == "local.gameshelf.shared", "Dedicated service")
-   try check(query[kSecAttrSynchronizable as String] as? Bool == false, "No cloud-synchronized credentials")
-   if query[kSecValueData as String] != nil {
-    try check(query[kSecAttrAccessible as String] as? String == (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String), "New tokens must stay on this device")
-   }
-   try check([a.uuidString, b.uuidString].contains(query[kSecAttrAccount as String] as? String ?? ""), "Connection UUID identifies item")
-  }
-  try rejects { try store.save(token: "", for: a) }
-  let denied = SharedCredentialStore(operations: .init(add: { _ in errSecAuthFailed },
-   update: { _, _ in errSecAuthFailed }, copy: { _ in (errSecAuthFailed, nil) }, delete: { _ in errSecAuthFailed }))
-  try rejects { _ = try denied.read(for: a) }
-  try rejects { try denied.save(token: "not-to-be-logged", for: a) }
-  try rejects { try denied.delete(for: a) }
-  let malformed = SharedCredentialStore(operations: .init(add: { _ in errSecSuccess }, update: { _, _ in errSecSuccess },
-   copy: { _ in (errSecSuccess, Data([0xff]) as CFData) }, delete: { _ in errSecSuccess }))
-  try rejects { _ = try malformed.read(for: a) }
-  let interaction = SharedCredentialStore(operations: .init(add: { _ in errSecSuccess }, update: { _, _ in errSecSuccess },
-   copy: { query in
-    try! check((query[kSecUseAuthenticationContext as String] as? LAContext)?.interactionNotAllowed==true, "Background token reads cannot display or wait for system UI")
-    try! check(query[kSecUseAuthenticationUI as String] as? String == (kSecUseAuthenticationUIFail as String), "Legacy login-keychain ACL prompts must also fail without UI")
-    return (errSecInteractionNotAllowed, nil)
-   }, delete: { _ in errSecSuccess }))
-  try check(try interaction.read(for: a, allowInteraction: false) == nil, "Unavailable background credential requests explicit sign-in without deleting token")
-  var updates = 0
-  let raced = SharedCredentialStore(operations: .init(add: { _ in errSecDuplicateItem }, update: { _, _ in
-   updates += 1; return updates == 1 ? errSecItemNotFound : errSecSuccess
-  }, copy: { _ in (errSecItemNotFound, nil) }, delete: { _ in errSecSuccess }))
-  try raced.save(token: "racing-create", for: a)
-  try check(updates == 2, "A concurrent item creation must update rather than delete the credential")
  }
  static func persistedRecovery() throws {
   let fm = FileManager.default

@@ -12,7 +12,7 @@ extension App {
    guard let identity=bindingStore.binding else{return}
    let connections=try SharedConnectionStore(root:root)
    guard let connection=connections.connections.first(where:{$0.id==identity.connectionID && $0.serverID==identity.serverID && $0.accountID==identity.accountID}) else{return}
-   let cachedToken=sharedAccessTokens[connection.id]
+   guard let token=sharedAccessTokens[connection.id] else{if force{showStatus("请登录已绑定的个人账号后同步。")};return}
    let snapshot=try PersonalLibrarySnapshot.make(games:store.games,collections:store.collections,serverID:identity.serverID,accountID:identity.accountID,playtime:{self.playtime?.totalSeconds(gameID:$0) ?? 0})
    let fingerprint=try snapshot.fingerprint(),coverPaths=Dictionary(uniqueKeysWithValues:store.games.filter{game in snapshot.games.contains{$0.id==game.id}}.compactMap{game in game.cover.map{(game.id,$0)}})
    let api=try SharedAPI(address:connection.address,certificateSHA256:connection.certificateSHA256),profileRoot=root
@@ -20,11 +20,6 @@ extension App {
    if force{showStatus("正在绑定个人游戏库…")}
    Task.detached(priority:.utility){
     do{
-     // Even a noninteractive Keychain query can wait for securityd. Keep all
-     // credential retrieval off the application's event thread.
-     guard let token=try cachedToken ?? (force ? SharedCredentialStore.read(connectionID:connection.id):SharedCredentialStore.readWithoutInteraction(connectionID:connection.id)) else{
-      await MainActor.run{self.personalSyncing=false;if force && !self.quitting{self.showStatus("请登录已绑定的个人账号后同步。")}};return
-     }
      let path="/api/personal-library/"+identity.deviceID.uuidString
      var revision=identity.revision
      if identity.fingerprint != fingerprint || force {

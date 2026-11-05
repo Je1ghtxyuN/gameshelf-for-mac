@@ -54,6 +54,8 @@ Administrators can select **Add games** or **Server administration** in the clie
 
 See [server setup](Server/README.md) for accounts, scan/publish selection, access grants, certificates and save exclusions. Shared Windows games use private Wine user folders; managed native Ren’Py uses a private save directory. The verified RPG Maker MZ WebKit profile writes saves and settings to account-private network storage, with confirmation before exit. Other shared web and native engines need their own save adapter.
 
+Shared-library sign-in lasts for the current app session. Passwords and login tokens are not saved to disk, and the client does not access macOS Keychain. Saved server addresses and account names remain available after relaunch.
+
 In a connected library, the Account page can bind this Mac’s game metadata to your personal account. Names, collections, favorites, playtime and cover thumbnails sync separately from game files and saves. Shared-library default covers belong to published games; personal cover changes remain private.
 
 Playtime is recorded while GameShelf is open, including background game time, and pauses when your Mac sleeps. Recording starts when this feature is enabled.

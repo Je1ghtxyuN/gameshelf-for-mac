@@ -24,13 +24,8 @@ final class SharedRunningSession {
 }
 
 extension App {
- func sharedBackgroundToken(for connection:SharedConnection)throws->String?{
-  if let token=sharedAccessTokens[connection.id]{return token}
-  return try SharedCredentialStore.readWithoutInteraction(connectionID:connection.id)
- }
  func sharedToken(for connection:SharedConnection)throws->String? {
-  if let token=sharedAccessTokens[connection.id]{return token}
-  return try SharedCredentialStore.read(connectionID:connection.id)
+  sharedAccessTokens[connection.id]
  }
  @objc func showSharedLibrary(){
   do{if sharedLibraryWindow==nil{sharedLibraryWindow=try SharedLibraryWindowController(app:self)};sharedLibraryWindow?.openLibrary();sharedLibraryWindow?.showWindow(nil);sharedLibraryWindow?.window?.makeKeyAndOrderFront(nil)}catch{errorAlert(error)}

@@ -1,8 +1,6 @@
 import Foundation
 import Darwin
 import NetFS
-import Security
-import LocalAuthentication
 
 /// Transient gateway credentials. Do not persist this response in library/defaults state.
 struct SharedSMBShare: Codable, Equatable, CustomStringConvertible, CustomDebugStringConvertible {
@@ -65,7 +63,7 @@ struct MountedLibraryShare {
 enum NetworkLibraryMount {
  enum Failure: Error, LocalizedError {
   case invalidShare, unsafeTarget, unexpectedMount, notOwned, invalidReceipt
-  case mountFailed(Int32), unmountFailed(Int32), credentialFailed(OSStatus), invalidToken
+  case mountFailed(Int32), unmountFailed(Int32)
   var errorDescription: String? {
    switch self {
    case .invalidShare: return "Invalid shared-library endpoint or credentials."
@@ -75,8 +73,6 @@ enum NetworkLibraryMount {
    case .invalidReceipt: return "The private recovery receipt is unsafe or does not match this account and mount."
    case .mountFailed(let code): return "Shared-library mount failed (\(code))."
    case .unmountFailed(let code): return "Shared-library unmount failed (\(code)); the volume may still be busy."
-   case .credentialFailed(let code): return "Shared-library Keychain operation failed (\(code))."
-   case .invalidToken: return "Invalid shared-library token."
    }
   }
  }
@@ -387,77 +383,5 @@ enum NetworkLibraryMount {
   withUnsafePointer(to: &tuple) { pointer in
    pointer.withMemoryRebound(to: CChar.self, capacity: MemoryLayout<T>.size) { String(cString: $0) }
   }
- }
-}
-
-/// Stores only an API token keyed by connection UUID, never a serialized share response.
-struct SharedCredentialStore {
- static func save(_ token: String, connectionID: UUID) throws {
-  try save(token: token, connectionID: connectionID)
- }
- static func save(token: String, connectionID: UUID) throws {
-  try Self().save(token: token, for: connectionID)
- }
- static func read(connectionID: UUID) throws -> String? {
-  try Self().read(for: connectionID)
- }
- static func readWithoutInteraction(connectionID:UUID)throws->String?{
-  try Self().read(for:connectionID,allowInteraction:false)
- }
- static func delete(connectionID: UUID) throws {
-  try Self().delete(for: connectionID)
- }
- struct Operations {
-  var add: ([String: Any]) -> OSStatus
-  var update: ([String: Any], [String: Any]) -> OSStatus
-  var copy: ([String: Any]) -> (OSStatus, CFTypeRef?)
-  var delete: ([String: Any]) -> OSStatus
-  static var live: Operations {
-   .init(add: { SecItemAdd($0 as CFDictionary, nil) },
-    update: { SecItemUpdate($0 as CFDictionary, $1 as CFDictionary) },
-    copy: { query in
-     var value: CFTypeRef?
-     let status = SecItemCopyMatching(query as CFDictionary, &value)
-     return (status, value)
-    }, delete: { SecItemDelete($0 as CFDictionary) })
-  }
- }
- private let operations: Operations
- init(operations: Operations = .live) { self.operations = operations }
- private func query(_ connection: UUID) -> [String: Any] {
-  [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "local.gameshelf.shared",
-   kSecAttrAccount as String: connection.uuidString, kSecAttrSynchronizable as String: false]
- }
- func save(token: String, for connection: UUID) throws {
-  guard !token.isEmpty else { throw NetworkLibraryMount.Failure.invalidToken }
-  let key = query(connection)
-  let attributes: [String: Any] = [kSecValueData as String: Data(token.utf8),
-   kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
-  var status = operations.update(key, attributes)
-  if status == errSecItemNotFound {
-   status = operations.add(key.merging(attributes) { _, new in new })
-   if status == errSecDuplicateItem { status = operations.update(key, attributes) }
-  }
-  guard status == errSecSuccess else { throw NetworkLibraryMount.Failure.credentialFailed(status) }
- }
- func read(for connection: UUID,allowInteraction:Bool=true) throws -> String? {
-  var key = query(connection)
-  if !allowInteraction{
-   let context=LAContext();context.interactionNotAllowed=true;key[kSecUseAuthenticationContext as String]=context
-   // The legacy login-keychain ACL path does not honor LAContext alone.
-   key[kSecUseAuthenticationUI as String]=kSecUseAuthenticationUIFail
-  }
-  key[kSecReturnData as String] = true; key[kSecMatchLimit as String] = kSecMatchLimitOne
-  let (status, value) = operations.copy(key)
-  if status == errSecItemNotFound || (!allowInteraction && status == errSecInteractionNotAllowed) { return nil }
-  guard status == errSecSuccess else { throw NetworkLibraryMount.Failure.credentialFailed(status) }
-  guard let data = value as? Data, let token = String(data: data, encoding: .utf8), !token.isEmpty else {
-   throw NetworkLibraryMount.Failure.invalidToken
-  }
-  return token
- }
- func delete(for connection: UUID) throws {
-  let status = operations.delete(query(connection))
-  guard status == errSecSuccess || status == errSecItemNotFound else { throw NetworkLibraryMount.Failure.credentialFailed(status) }
  }
 }

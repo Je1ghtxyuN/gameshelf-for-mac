@@ -13,7 +13,6 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
  private let address=NSTextField(string:"")
  private let username=NSTextField(string:"")
  private let password=NSSecureTextField(string:"")
- private let remember=NSButton(checkboxWithTitle:"保持登录",target:nil,action:nil)
  private var pin:String?
  private var invitationName:String?
  private var api:SharedAPI?
@@ -51,7 +50,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   super.init(window:window)
   window.title="共享游戏库";window.isReleasedWhenClosed=false;window.delegate=self;window.appearance=NSAppearance(named:.aqua)
   address.placeholderString="服务器地址";username.placeholderString="账号";password.placeholderString="密码"
-  address.delegate=self;username.delegate=self;password.delegate=self;remember.state = .on
+  address.delegate=self;username.delegate=self;password.delegate=self
   page=store.connections.isEmpty ? .address:.servers
   render();window.center()
  }
@@ -127,8 +126,6 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
    let change=link("切换服务器"){[weak self] in self?.showServers()}
    add(stack([icon,serverName,NSView(),change],vertical:false,spacing:8))
    add(field("账号",username));add(field("密码",password));controls += [username,password]
-   remember.font = .systemFont(ofSize:12);remember.state=(selected?.rememberLogin ?? true) ? .on:.off
-   controls.append(remember);add(remember)
    add(action("登录",primary:true){[weak self] in self?.login()})
   case .retry:
    add(label("暂时无法连接",size:24,weight:.semibold))
@@ -268,16 +265,14 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   guard !username.stringValue.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty,!password.stringValue.isEmpty else{status("请输入账号和密码。",error:true);return}
   do {
    let client=try SharedAPI(address:address.stringValue,certificateSHA256:pin);api=client;operation=UUID();let id=operation
-   let keep=remember.state == .on;start("正在登录…")
+   start("正在登录…")
    client.login(username:username.stringValue,password:password.stringValue){[weak self] result in DispatchQueue.main.async {
     guard let self,!self.closed,self.operation==id else{return}
     do {
      let response=try result.get()
      guard response.serverID==info.serverID else{throw LibraryError("服务器身份不匹配，请重新选择服务器。")}
-     var connection=SharedConnection(name:info.name,address:client.address.absoluteString,serverID:response.serverID,accountID:response.user.id,username:response.user.username,isAdministrator:response.user.admin,certificateSHA256:self.pin,rememberLogin:keep)
+     var connection=SharedConnection(name:info.name,address:client.address.absoluteString,serverID:response.serverID,accountID:response.user.id,username:response.user.username,isAdministrator:response.user.admin,certificateSHA256:self.pin,rememberLogin:false)
      if let existing=self.store.connections.first(where:{$0.serverID==connection.serverID && $0.accountID==connection.accountID}){connection.id=existing.id}
-     if keep{try SharedCredentialStore.save(token:response.token,connectionID:connection.id)}
-     else{try SharedCredentialStore.delete(connectionID:connection.id)}
      try self.store.save(connection);app.sharedAccessTokens[connection.id]=response.token
      self.password.stringValue="";self.selected=connection;self.loading=false;self.games=[];self.page = self.accountRequested ? .account:.catalog;self.render();if !self.accountRequested{self.loadCatalog()}
     }catch{
@@ -346,9 +341,9 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
      self.administratorSetupWindow=AdministratorSetupWindowController(invitation:invitation){[weak self] response in
       guard let self,let app=self.app else{return}
       do{
-       var connection=SharedConnection(name:invitation.name ?? "GameShelf",address:invitation.address,serverID:response.serverID,accountID:response.user.id,username:response.user.username,isAdministrator:response.user.admin,certificateSHA256:invitation.certificateSHA256,rememberLogin:true)
+       var connection=SharedConnection(name:invitation.name ?? "GameShelf",address:invitation.address,serverID:response.serverID,accountID:response.user.id,username:response.user.username,isAdministrator:response.user.admin,certificateSHA256:invitation.certificateSHA256,rememberLogin:false)
        if let existing=self.store.connections.first(where:{$0.serverID==connection.serverID && $0.accountID==connection.accountID}){connection.id=existing.id}
-       try SharedCredentialStore.save(token:response.token,connectionID:connection.id);try self.store.save(connection);app.sharedAccessTokens[connection.id]=response.token
+       try self.store.save(connection);app.sharedAccessTokens[connection.id]=response.token
        self.selected=connection;self.loading=false;self.page = .catalog;self.render();self.loadCatalog()
       }catch{self.finish(error.localizedDescription,error:true)}
      }
@@ -380,7 +375,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   guard app.sharedSessions.isEmpty else{status("请先保存并退出正在运行的共享游戏。",error:true);return}
   do{
    if let token=try app.sharedToken(for:connection),let client=try? SharedAPI(address:connection.address,certificateSHA256:connection.certificateSHA256){api=client;client.request("/api/logout",method:"POST",token:token){(_:Result<SharedOK,Error>) in}}
-   try SharedCredentialStore.delete(connectionID:connection.id);app.sharedAccessTokens.removeValue(forKey:connection.id)
+   app.sharedAccessTokens.removeValue(forKey:connection.id)
    password.stringValue="";games=[];page = .login;feedback="";feedbackIsError=false;render()
   }catch{status(friendly(error),error:true)}
  }

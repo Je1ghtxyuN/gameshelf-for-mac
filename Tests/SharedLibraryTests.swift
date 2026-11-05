@@ -34,7 +34,7 @@ import Foundation
   let restored=try SharedConnectionStore(root:base)
   try check(restored.connections==[connection],"connection persistence")
   let data=try String(contentsOf:base.appendingPathComponent("shared-connections.json"),encoding:.utf8)
-  try check(!data.contains("password") && !data.contains("token"),"credentials persisted outside Keychain")
+  try check(!data.contains("password") && !data.contains("token"),"connection records must not persist passwords or tokens")
   var changed=connection;changed.accountID="bob"
   do{try store.save(changed);throw Failure(message:"account switch accepted under same connection")}
   catch is Failure{throw Failure(message:"account switch accepted under same connection")}catch{}

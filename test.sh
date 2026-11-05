@@ -34,6 +34,7 @@ run_swift LibraryDiscovery Sources/Core.swift Sources/LibraryDiscovery.swift
 run_swift DiscoveryPresentation Sources/Core.swift Sources/DiscoveryPresentation.swift
 run_swift DiscoveryBinding Sources/Core.swift Sources/LibraryDiscovery.swift Sources/DiscoveryBinding.swift
 run_swift NetworkLibraryMount Sources/NetworkLibraryMount.swift
+run_swift SharedSessionTokens Sources/SharedSessionTokens.swift
 run_swift SharedLibrary Sources/Core.swift Sources/SharedLibrary.swift
 run_swift SharedInvitation Sources/Core.swift Sources/SharedLibrary.swift
 run_swift SharedNavigation Sources/Core.swift Sources/SharedLibrary.swift Sources/SharedNavigation.swift

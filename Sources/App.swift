@@ -73,7 +73,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  var discoveryWindow:DiscoveryWindowController?
  var sharedLibraryWindow:SharedLibraryWindowController?
  var sharedSessions:[UUID:SharedRunningSession]=[:]
- var sharedAccessTokens:[UUID:String]=[:]
+ var sharedAccessTokens=SharedSessionTokens()
  var saveMigrationPlans:[UUID:MZSaveArchive]=[:]
  var sharedWebKitSession:SharedWebKitSession?
  var leavingWebGame=false
