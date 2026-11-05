@@ -212,7 +212,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   let title=label(currentFilterTitle(),size:14,weight:.semibold)
   search.placeholderString="搜索游戏";search.delegate=self;search.widthAnchor.constraint(equalToConstant:190).isActive=true;search.focusRingType = .none
   let spacer=NSView();spacer.setContentHuggingPriority(.defaultLow,for:.horizontal)
-  let importButton=ActionButton("添加游戏库"){[weak self] in self?.showDiscovery()};importButton.image=NSImage(systemSymbolName:"folder.badge.plus",accessibilityDescription:nil);importButton.imagePosition = .imageLeading;importButton.controlSize = .large
+  let importButton=ActionButton("扫描游戏"){[weak self] in self?.showDiscovery()};importButton.image=NSImage(systemSymbolName:"folder.badge.plus",accessibilityDescription:nil);importButton.imagePosition = .imageLeading;importButton.controlSize = .large
   let sharedButton=ActionButton("共享库"){[weak self] in self?.showSharedLibrary()};sharedButton.image=NSImage(systemSymbolName:"network",accessibilityDescription:nil);sharedButton.imagePosition = .imageLeading
   let top=stack(filter=="all" ? [title,spacer,search,sharedButton,importButton]:[title,spacer,search],spacing:18)
   let topWrap=NSView();pin(top,to:topWrap,inset:22);topWrap.heightAnchor.constraint(equalToConstant:70).isActive=true
@@ -347,7 +347,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
    let title=label(message,size:23,weight:.semibold)
    var elements:[NSView]=[image,title]
    if welcome {
-    let action=ActionButton("添加游戏库文件夹"){[weak self] in self?.showDiscovery()};action.controlSize = .large;elements.append(action)
+    let action=ActionButton("扫描游戏"){[weak self] in self?.showDiscovery()};action.controlSize = .large;elements.append(action)
    }else if !searching {
     let hint=label(filter=="recent" ? "从「所有游戏」启动游戏后，会显示在这里。":filter=="favorite" ? "在游戏的「⋯」菜单中选择收藏。":"在游戏的「⋯」菜单中选择「管理分类」。",size:13);hint.textColor = .secondaryLabelColor;elements.append(hint)
    }
@@ -623,7 +623,8 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  func startWine(_ game:Game,runtime:URL,launchGame:Game?=nil){
   do {
    if wineSessions.contains(game.id) {setBusy(false,"");throw LibraryError("此游戏仍在运行，请先回到游戏窗口或退出后重试。")}
-   let spec=try Wrapper.launchSpec(game:launchGame ?? game,runtime:runtime)
+   let helper=Bundle.main.resourceURL!.appendingPathComponent("Tools/GameShelfWineWindow.exe")
+   let spec=try Wrapper.centeredLaunchSpec(game:launchGame ?? game,runtime:runtime,helper:helper)
    let wait=try Wrapper.waitSpec(game:game,runtime:runtime)
    let logs=runtime.appendingPathComponent("Contents/SharedSupport/Logs")
    try FileManager.default.createDirectory(at:logs,withIntermediateDirectories:true)

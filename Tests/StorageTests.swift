@@ -10,7 +10,7 @@ import Foundation
   let store=try LibraryStore(root:base.appendingPathComponent("local"))
   let candidate=Candidate(path:"Game.exe",backend:.wine,engine:"Windows")
   let g=try store.add(source:source,candidate:candidate)
-  guard g.windowSize=="1280x720" else{fatalError("New Windows imports must default to a bounded window area")}
+  guard g.windowSize==nil else{fatalError("New Windows imports must default to a native centered window")}
   _ = try store.add(source:source,candidate:candidate)
   guard store.games.count == 1, g.folder == source.path else {fatalError("Import must deduplicate and reference source")}
   guard !fm.fileExists(atPath:store.root.appendingPathComponent("Games").path) else {fatalError("Import unexpectedly copied content")}

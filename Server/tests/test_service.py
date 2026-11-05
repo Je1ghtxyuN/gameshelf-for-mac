@@ -224,8 +224,17 @@ class ServiceTests(unittest.TestCase):
         game=self.s.publish(c['id'],save_paths=[dict(path='custom.dat',kind='file')])
         self.assertIn(dict(path='custom.dat',kind='file'),game['savePaths'])
         self.assertEqual(len(game['savePaths']),3)
-        default=self.s.publish(c['id'])
-        self.assertNotEqual(game['id'],default['id'])
+        # Default republication retains the existing reviewed save boundary.
+        for default in (self.s.publish(c['id']),self.s.publish(c['id'],save_paths=[])):
+            self.assertEqual(game['id'],default['id'])
+            self.assertEqual(game['savePaths'],default['savePaths'])
+        # A nonempty explicit configuration still selects a distinct rule edition.
+        explicit=[dict(path='Save01.rvdata2',kind='file')]
+        different=self.s.publish(c['id'],save_paths=explicit)
+        self.assertNotEqual(game['id'],different['id'])
+        self.assertNotIn(dict(path='custom.dat',kind='file'),different['savePaths'])
+        self.assertEqual(len(different['savePaths']),2)
+        self.assertEqual(self.s.publish(c['id'],save_paths=explicit)['id'],different['id'])
         self.denied(lambda:self.s.publish(c['id'],save_paths=[dict(path='../escape',kind='file')]),400)
         self.denied(lambda:self.s.publish(c['id'],save_paths=[dict(path='.gameshelf-profile',kind='directory')]),400)
     def test_logout_only_current_token_and_its_leases(self):

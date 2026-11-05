@@ -64,7 +64,7 @@ NAS 游戏会保留在原目录。游玩时保持共享目录挂载，断开后�
 
 ## 从源码构建
 
-安装 Apple Command Line Tools、Python 3.12+、Ruby 和 Node.js 20+，然后执行：
+安装 Apple Command Line Tools、Python 3.12+、Ruby、Node.js 20+ 和 [Zig](https://ziglang.org/download/)。将 `zig` 加入 PATH，或用 `ZIG` 指定其可执行文件绝对路径，然后执行：
 
 ```sh
 ./build.sh
@@ -87,3 +87,5 @@ python3 Tools/migrate_renpy_saves.py --help
 [MIT 许可证](LICENSE) · [第三方说明](THIRD_PARTY_NOTICES.md) · [隐私说明](PRIVACY.md)
 
 访问计数器来自 [Moe Counter](https://github.com/journey-ad/Moe-Counter)，徽章由 [Shields.io](https://shields.io) 提供。
+
+共享流程使用同一个「游戏扫描」窗口：选中缓存结果后点击「共享所选」，服务器仅核对所选目录。首次共享确认本机目录与服务器目录的对应位置，之后复用。共享游戏库点击「游玩」即记住游戏并启动，无需再次批量添加。账号管理里勾选各账号可玩的游戏，不再提供单独的授权页面。账号可修改自己的密码，管理员可重置其他账号的密码；改密前须退出该账号的共享游戏，改密后重新登录，账号、游戏资料及存档保留。

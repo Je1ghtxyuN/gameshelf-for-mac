@@ -19,3 +19,7 @@
 Wine、Wineskin、Ren’Py、RPG Maker、Unity、Steam、VNDB 等名称用于说明互操作对象。相关商标、第三方软件与服务保留各自权利。
 
 仓库不分发游戏二进制、游戏数据、第三方引擎或 SDK、运行包、封面图片与字体。这些内容不受本项目 MIT 许可授权；使用者应自行合法取得，并遵守相应许可或服务条款。本仓库中的程序化图标源码不包含上述第三方图像资产。
+
+## Wine window helper build support
+
+`Tools/wine_window_launcher.c` is built with Zig and MinGW-w64 runtime support. The tested toolchain is Zig 0.17.1. Its accompanying Zig and MinGW-w64 notices are retained in [LICENSE-WineWindow-toolchain.txt](LICENSE-WineWindow-toolchain.txt) and included in the app bundle.

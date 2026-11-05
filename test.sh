@@ -34,6 +34,10 @@ run_swift VisualNovelProbe Sources/VisualNovelProbe.swift
 run_swift VisualNovelImport Sources/Core.swift
 run_swift LibraryDiscovery Sources/Core.swift Sources/LibraryDiscovery.swift
 run_swift DiscoveryPresentation Sources/Core.swift Sources/DiscoveryPresentation.swift
+run_swift SharedScanSelection Sources/Core.swift Sources/SharedScanSelection.swift
+run_swift WineWindowPolicy Sources/Core.swift Sources/Runtime.swift Sources/WineWindowPolicy.swift
+clang -Wall -Wextra -Werror Tests/WineWindowGeometryTests.c -o build/WineWindowGeometryTests
+build/WineWindowGeometryTests
 run_swift DiscoveryBinding Sources/Core.swift Sources/LibraryDiscovery.swift Sources/DiscoveryBinding.swift
 run_swift NetworkLibraryMount Sources/NetworkLibraryMount.swift
 run_swift SharedSessionTokens Sources/SharedSessionTokens.swift

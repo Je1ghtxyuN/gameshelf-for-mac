@@ -59,10 +59,15 @@ class Application:
                     raise APIError(403,'Administrator required')
             # The service authenticates both before walking and before committing.
             return s.scan(scan[1],authorize=authorize_scan)
+        selected = re.fullmatch('/api/admin/roots/'+ID+'/candidates',path)
+        if method=='POST' and selected:
+            return s.register_selected(selected[1],data,authorize=lambda:self.require_admin(token))
         # Keep authorization and mutation within the SAME service authority lock.
         # A disabled admin cannot race a queued request after authentication.
         with s.lock:
             user = s.authenticate(token)
+            if method=='POST' and path=='/api/account/password':
+                return s.change_password(user,data)
             if path.startswith('/api/admin/'):
                 if not user['admin']:
                     raise APIError(403, 'Administrator required')
@@ -89,6 +94,9 @@ class Application:
                         return dict(users=s.users())
                     if method == 'POST':
                         return s.create_user(data.get('username'), data.get('password'), data.get('admin',False))
+                password = re.fullmatch('/api/admin/users/'+ID+'/password',path)
+                if method=='POST' and password:
+                    return s.change_password(user,data,password[1])
                 m = re.fullmatch('/api/admin/users/'+ID+'/rename', path)
                 if method == 'POST' and m:
                     return s.rename_self(user,m[1],data)

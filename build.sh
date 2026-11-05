@@ -6,6 +6,10 @@ arch="${ARCH:-$(uname -m)}"
 case "$arch" in arm64|x86_64) ;; *) echo 'Unsupported ARCH' >&2; exit 1;; esac
 app=dist/GameShelf.app
 mkdir -p build/module-cache "$app/Contents/MacOS" "$app/Contents/Resources/Tools"
+zig_exe="${ZIG:-$(command -v zig || true)}"
+[[ -n "$zig_exe" ]] || { echo 'Set ZIG to an official Zig executable to build the Wine window helper.' >&2; exit 1; }
+bash Tools/build_wine_window_helper.sh "$zig_exe"
+cp build/GameShelfWineWindow.exe "$app/Contents/Resources/Tools/GameShelfWineWindow.exe"
 swift -module-cache-path build/module-cache Tools/Icon.swift build/AppIcon.iconset
 iconutil -c icns build/AppIcon.iconset -o "$app/Contents/Resources/GameShelfIcon.icns"
 swiftc -swift-version 5 -O -module-cache-path build/module-cache -target "${arch}-apple-macosx15.0" -framework AppKit -framework WebKit -framework NetFS -framework Security -framework Network \
@@ -24,8 +28,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleDisplayName</key><string>GameShelf</string>
 <key>CFBundleExecutable</key><string>GameShelf</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.1.1</string>
-<key>CFBundleVersion</key><string>28</string>
+<key>CFBundleShortVersionString</key><string>1.1.2</string>
+<key>CFBundleVersion</key><string>29</string>
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSNetworkVolumesUsageDescription</key><string>读取您导入的网络卷游戏文件夹。</string>
@@ -33,7 +37,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 mkdir -p "$app/Contents/Resources/Licenses"
-for notice in LICENSE LICENSE-rpg-extract.txt THIRD_PARTY_NOTICES.md; do
+for notice in LICENSE LICENSE-rpg-extract.txt LICENSE-WineWindow-toolchain.txt THIRD_PARTY_NOTICES.md; do
  cp "$notice" "$app/Contents/Resources/Licenses/$notice"
 done
 codesign --force --sign - "$app"

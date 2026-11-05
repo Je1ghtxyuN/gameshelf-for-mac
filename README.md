@@ -41,7 +41,7 @@ Open the release DMG and drag **GameShelf.app** onto the **Applications** shortc
 
 On first launch, choose **Local use**, **Connect to a shared library**, or **Create a shared library**. Local use needs no account. A newly deployed gateway provides a private, one-use administrator setup file; open it in the creation flow to choose your own administrator credentials.
 
-1. Click **Add library** and register a folder containing games. Local disks, external disks and mounted network folders work the same way.
+1. Click **Scan games** and register a folder containing games. Local disks, external disks and mounted network folders work the same way.
 2. Scan it, tick the games you want and choose a launch entry where needed. Nothing is added automatically. **File → Add game manually** remains available for special cases.
 3. For Windows games, open **Settings** and select an existing **Wineskin `.app`** environment. Native Mac games use their own app; Ren’Py adapters use the matching engine version.
 4. Click **Play** on the game card. Open **⋯ → Properties** to edit its name, launch settings, files, cover, or collections.
@@ -50,7 +50,7 @@ NAS games stay in their original directory. Keep the network share mounted while
 
 For account-based sharing, open **Shared library**, load the server invitation file (or enter its address), then sign in. Select games from the authorized catalog; no NAS account is required. The gateway uses encrypted SMB3 and an independent writable workspace for each account and game. Shared games run from the network; the local-copy action applies to directly imported games.
 
-Administrators can select **Add games** or **Server administration** in the client to scan sources, review save exclusions, publish selected games, create accounts and manage grants. The native panel uses the saved secure connection; a browser sign-in is optional.
+Use **Game scan** for both local and shared libraries. Select cached results and choose **Share selected**; the gateway verifies only those directories before publication. The first share confirms which mounted folder corresponds to the server source; later shares reuse it. The shared catalog offers **Play** directly and remembers the selected game automatically. In **Account management**, create accounts and tick the games each account can play. There is no separate grants page. Accounts can change their own password; administrators can reset another account’s password. Password changes require running shared games to exit, revoke existing logins, and retain account identities, game access and saves.
 
 See [server setup](Server/README.md) for accounts, scan/publish selection, access grants, certificates and save exclusions. Shared Windows games use private Wine user folders; managed native Ren’Py uses a private save directory. The verified RPG Maker MZ WebKit profile writes saves and settings to account-private network storage, with confirmation before exit. Other shared web and native engines need their own save adapter.
 
@@ -64,7 +64,7 @@ Confirmed title aliases and cover art are cached locally and reused on later imp
 
 ## Build from source
 
-Install Apple Command Line Tools, Python 3.12+, Ruby, and Node.js 20+, then run:
+Install Apple Command Line Tools, Python 3.12+, Ruby, Node.js 20+, and [Zig](https://ziglang.org/download/). Put `zig` on PATH or set `ZIG` to its absolute executable path, then run:
 
 ```sh
 ./build.sh

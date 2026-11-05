@@ -41,3 +41,5 @@ gameshelf-invitation.json
 bootstrap-password
 *.sqlite3
 *.sqlite3-*
+
+shared-scan-locations.json

@@ -221,7 +221,7 @@ final class LibraryStore {
    if g.entry != candidate{g.entry=candidate;try update(g)}
    return g
   }
-  let g=Game(title:folder.pathExtension.lowercased()=="app" ? folder.deletingPathExtension().lastPathComponent : folder.lastPathComponent,folder:folder.path,originalFolder:folder.path,entry:candidate,windowSize:candidate.backend == .wine ? "1280x720":nil)
+  let g=Game(title:folder.pathExtension.lowercased()=="app" ? folder.deletingPathExtension().lastPathComponent : folder.lastPathComponent,folder:folder.path,originalFolder:folder.path,entry:candidate,windowSize:nil)
   games.append(g)
   do {try save()} catch {games.removeLast();throw error}
   return g

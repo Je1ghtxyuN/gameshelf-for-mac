@@ -24,13 +24,13 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
  private var controls:[NSControl]=[]
  private var message:NSTextField?
  private var spinner:NSProgressIndicator?
- private var addButton:NSButton?
- private var selectionLabel:NSTextField?
- private var rows:[(SharedCatalogGame,NSButton,NSPopUpButton)]=[]
  private var games:[SharedCatalogGame]=[]
  private var administratorSetupWindow:AdministratorSetupWindowController?
  private var administrationWindow:SharedAdministrationWindowController?
  private var accountRequested=false
+ private var passwordWindow:PasswordWindowController?
+ var sharingConnection:SharedConnection?{guard let selected,selected.isAdministrator,app?.sharedAccessTokens[selected.id] != nil else{return nil};return selected}
+ func reloadSharedGames(){if !closed,selected != nil{loadCatalog()}}
 
  func openLibrary(){
   accountRequested=false
@@ -55,7 +55,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   render();window.center()
  }
  required init?(coder:NSCoder){fatalError()}
- func windowWillClose(_ notification:Notification){closed=true;operation=UUID();password.stringValue="";administrationWindow?.close();app?.sharedLibraryWindow=nil}
+ func windowWillClose(_ notification:Notification){passwordWindow?.close();closed=true;operation=UUID();password.stringValue="";administrationWindow?.close();app?.sharedLibraryWindow=nil}
  func controlTextDidBeginEditing(_ obj:Notification){(obj.object as? NSTextField)?.superview.flatMap{$0 as? SharedLoginInput}?.focus(true)}
  func controlTextDidEndEditing(_ obj:Notification){(obj.object as? NSTextField)?.superview.flatMap{$0 as? SharedLoginInput}?.focus(false)}
  private func label(_ value:String,size:CGFloat=14,weight:NSFont.Weight = .regular,secondary:Bool=false)->NSTextField {
@@ -80,7 +80,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
  }
  private func render(){
   guard let window,let root=window.contentView else{return}
-  root.subviews.forEach{$0.removeFromSuperview()};controls=[];message=nil;spinner=nil;addButton=nil
+  root.subviews.forEach{$0.removeFromSuperview()};controls=[];message=nil;spinner=nil
   root.wantsLayer=true;root.layer?.backgroundColor=NSColor.white.cgColor
   if page == .catalog{renderCatalog(root);return}
   if page == .account{renderAccount(root);return}
@@ -147,12 +147,12 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   let title=stack([label(connection.name,size:24,weight:.semibold),label(host(connection.address),size:12,secondary:true)],spacing:5)
   let refresh=action(""){[weak self] in self?.loadCatalog()}
   refresh.image=NSImage(systemSymbolName:"arrow.clockwise",accessibilityDescription:"刷新游戏");refresh.toolTip="刷新游戏";refresh.isBordered=false
-  let account=action("账号"){[weak self] in self?.openAccount(connectionID:connection.id)}
+  let account=action(connection.isAdministrator ? "账号管理":"账号"){[weak self] in if connection.isAdministrator{self?.openAdministration()}else{self?.openAccount(connectionID:connection.id)}}
   account.image=NSImage(systemSymbolName:"person.crop.circle",accessibilityDescription:nil);account.imagePosition = .imageLeading
   let change=action("切换服务器"){[weak self] in self?.showServers()}
-  var headerViews:[NSView]=[title,NSView(),refresh,change,account]
-  if connection.isAdministrator{headerViews.append(action("添加游戏"){[weak self] in self?.openAdministration()})}
-  if connection.isAdministrator{headerViews.append(action("服务器管理"){[weak self] in self?.openAdministration()})}
+  var headerViews:[NSView]=[title,NSView(),refresh]
+  if connection.isAdministrator{headerViews.append(action("游戏扫描"){[weak self] in self?.app?.showDiscovery()})}
+  headerViews += [account,change]
   let header=stack(headerViews,vertical:false,spacing:12)
   let text=label(feedback,size:12,secondary:!feedbackIsError);text.maximumNumberOfLines=2;message=text
   let progress=NSProgressIndicator();progress.style = .spinning;progress.controlSize = .small;progress.isDisplayedWhenStopped=false;spinner=progress
@@ -161,20 +161,19 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   let scroll=NSScrollView();scroll.hasVerticalScroller=true;scroll.drawsBackground=false
   let document=FlippedView();document.translatesAutoresizingMaskIntoConstraints=false;scroll.documentView=document
   NSLayoutConstraint.activate([document.widthAnchor.constraint(equalTo:scroll.contentView.widthAnchor),document.leadingAnchor.constraint(equalTo:scroll.contentView.leadingAnchor),document.topAnchor.constraint(equalTo:scroll.contentView.topAnchor)])
-  let list=stack([],spacing:14);app.pin(list,to:document,inset:8);rows=[]
+  let list=stack([],spacing:14);app.pin(list,to:document,inset:8)
   for game in games where !game.entries.isEmpty {
-   let checkbox=NSButton(checkboxWithTitle:game.title,target:self,action:#selector(selectionChanged));checkbox.font = .systemFont(ofSize:15,weight:.medium);checkbox.lineBreakMode = .byTruncatingTail;checkbox.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
-   let popup=NSPopUpButton();popup.addItems(withTitles:game.entries.map{$0.path+" · "+DiscoveryPresentation.platform(entry:$0)});popup.widthAnchor.constraint(equalToConstant:300).isActive=true
-   let row=stack([checkbox,NSView(),popup],vertical:false,spacing:14);list.addArrangedSubview(row);row.widthAnchor.constraint(equalTo:list.widthAnchor).isActive=true;row.heightAnchor.constraint(greaterThanOrEqualToConstant:38).isActive=true;rows.append((game,checkbox,popup))
+   let name=label(game.title,size:16,weight:.semibold)
+   let popup=NSPopUpButton();popup.addItems(withTitles:game.entries.map{$0.path+" · "+DiscoveryPresentation.platform(entry:$0)});popup.widthAnchor.constraint(equalToConstant:260).isActive=true;controls.append(popup)
+   let play=action("游玩"){[weak self] in self?.playShared(game,entry:popup.indexOfSelectedItem)}
+   let row=stack([name,NSView(),popup,play],vertical:false,spacing:14);list.addArrangedSubview(row);row.widthAnchor.constraint(equalTo:list.widthAnchor).isActive=true;row.heightAnchor.constraint(greaterThanOrEqualToConstant:58).isActive=true
   }
-  if rows.isEmpty{list.addArrangedSubview(label("暂无可用游戏",size:14,secondary:true))}
-  let selectedCount=label("\(rows.count) 款游戏",size:12,secondary:true);selectionLabel=selectedCount
-  let add=action("添加到游戏库",primary:true){[weak self] in self?.addSelected()};add.widthAnchor.constraint(equalToConstant:155).isActive=true;addButton=add
-  let footer=stack([selectedCount,NSView(),add],vertical:false,spacing:12)
+  if games.isEmpty{list.addArrangedSubview(label("暂无共享游戏",size:16,secondary:true))}
+  let footer=stack([label("\(games.count) 款游戏",size:12,secondary:true),NSView()],vertical:false)
   let layout=stack([header,status,separator,scroll,footer],spacing:18);app.pin(layout,to:root,inset:28)
   for view in [header,status,separator,scroll,footer]{view.widthAnchor.constraint(equalTo:layout.widthAnchor).isActive=true}
   scroll.heightAnchor.constraint(greaterThanOrEqualToConstant:220).isActive=true;scroll.setContentHuggingPriority(.defaultLow,for:.vertical)
-  window.setContentSize(NSSize(width:940,height:620));applyLoading();selectionChanged()
+  window.setContentSize(NSSize(width:940,height:620));applyLoading()
  }
  private func renderAccount(_ root:NSView){
   guard let app,let window,let connection=selected else{return}
@@ -198,7 +197,8 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   }
   card("个人游戏库",[label(isBound ? "已绑定 · \(app.store.games.count) 款游戏":"未绑定",size:15),stack([sync,NSView()],vertical:false)])
   var footer:[NSView]=[action("切换服务器"){[weak self] in self?.accountRequested=false;self?.showServers()}]
-  if connection.isAdministrator{footer.append(action("服务器管理"){[weak self] in self?.openAdministration()})}
+  if connection.isAdministrator{footer.append(action("账号管理"){[weak self] in self?.openAdministration()})}
+  footer.append(action("修改密码"){[weak self] in self?.changeOwnPassword()})
   footer += [NSView(),action("退出登录"){[weak self] in self?.logout()}]
   let progress=NSProgressIndicator();progress.style = .spinning;progress.controlSize = .small;progress.isDisplayedWhenStopped=false;spinner=progress
   let text=label(feedback,size:12,secondary:!feedbackIsError);text.maximumNumberOfLines=2;message=text
@@ -212,7 +212,6 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   if loading{spinner?.startAnimation(nil)}else{spinner?.stopAnimation(nil)}
   message?.stringValue=feedback;message?.textColor=feedbackIsError ? .systemRed:.secondaryLabelColor
   controls.compactMap{$0 as? SharedLoginPrimary}.forEach{$0.needsDisplay=true}
-  if page == .catalog{selectionChanged()}
  }
  private func status(_ value:String,error:Bool=false){feedback=value;feedbackIsError=error;applyLoading()}
  private func start(_ value:String){loading=true;feedback=value;feedbackIsError=false;applyLoading()}
@@ -235,7 +234,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   operation=UUID();selected=connection;server=SharedServerInfo(name:connection.name,serverID:connection.serverID,version:"");address.stringValue=connection.address;username.stringValue=connection.username;password.stringValue="";pin=connection.certificateSHA256;feedback="";feedbackIsError=false
   let authenticated=(try? app?.sharedToken(for:connection)) != nil
   switch SharedNavigation.destination(accountRequested:accountRequested,authenticated:authenticated){
-  case .account:page = .account;loading=false;render();loadCatalog()
+  case .account:page = connection.isAdministrator ? .catalog:.account;loading=false;render();loadCatalog()
   case .catalog:page = .retry;render();loadCatalog()
   case .login:page = .login;render()
   }
@@ -274,7 +273,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
      var connection=SharedConnection(name:info.name,address:client.address.absoluteString,serverID:response.serverID,accountID:response.user.id,username:response.user.username,isAdministrator:response.user.admin,certificateSHA256:self.pin,rememberLogin:false)
      if let existing=self.store.connections.first(where:{$0.serverID==connection.serverID && $0.accountID==connection.accountID}){connection.id=existing.id}
      try self.store.save(connection);app.sharedAccessTokens[connection.id]=response.token
-     self.password.stringValue="";self.selected=connection;self.loading=false;self.games=[];self.page = self.accountRequested ? .account:.catalog;self.render();if !self.accountRequested{self.loadCatalog()}
+     self.password.stringValue="";self.selected=connection;self.loading=false;self.games=[];self.page = self.accountRequested && !connection.isAdministrator ? .account:.catalog;self.render();if !self.accountRequested || connection.isAdministrator{self.loadCatalog()}
     }catch{
      let message=(error as? SharedRequestError)?.statusCode==401 ? "账号或密码不正确，请重试。":self.friendly(error)
      self.finish(message,error:true)
@@ -292,7 +291,8 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
     guard let self,!self.closed,self.operation==id else{return}
     self.loading=false
     do{
-     self.games=try result.get().games;self.page = self.accountRequested ? .account:.catalog;self.feedback="";self.feedbackIsError=false;self.render()
+     self.games=try result.get().games;self.page = self.accountRequested && !connection.isAdministrator ? .account:.catalog;self.feedback="";self.feedbackIsError=false;self.render()
+     if self.accountRequested && connection.isAdministrator{self.accountRequested=false;self.openAdministration()}
      for remote in self.games {
       if let game=app.store.games.first(where:{$0.shared?.serverID==connection.serverID && $0.shared?.accountID==connection.accountID && $0.shared?.gameID==remote.id}){app.fetchSharedDefaultCover(remote,connection:connection,game:game)}
      }
@@ -305,21 +305,18 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
    }}
   }catch{loading=false;page = .login;feedback="请重新登录以继续。";feedbackIsError=true;render()}
  }
- @objc private func selectionChanged(){
-  let count=rows.filter{$0.1.state == .on}.count
-  selectionLabel?.stringValue=count==0 ? "\(rows.count) 款游戏":"已选择 \(count) 款游戏"
-  addButton?.isEnabled = !loading && count>0;addButton?.needsDisplay=true
+ private func playShared(_ remote:SharedCatalogGame,entry:Int){
+  guard let app,let connection=selected,remote.entries.indices.contains(entry),!app.busy else{return}
+  do{let game=try app.applyKnownMetadata(app.store.addShared(remote,entry:remote.entries[entry],connection:connection,mountRoot:app.root));app.fetchSharedDefaultCover(remote,connection:connection,game:game);app.showLibrary();app.launch(game)}catch{finish(friendly(error),error:true)}
  }
- private func addSelected(){
-  guard let app,let connection=selected,!app.busy else{return}
-  do{
-   var count=0
-   for (game,checkbox,popup) in rows where checkbox.state == .on {
-    guard game.entries.indices.contains(popup.indexOfSelectedItem) else{continue}
-    let added=try app.applyKnownMetadata(app.store.addShared(game,entry:game.entries[popup.indexOfSelectedItem],connection:connection,mountRoot:app.root));app.fetchSharedDefaultCover(game,connection:connection,game:added);checkbox.state = .off;count+=1
-   }
-   app.showLibrary();finish("已添加 \(count) 款游戏。");selectionChanged()
-  }catch{finish(friendly(error),error:true)}
+ private func passwordChanged(){
+  guard let app,let connection=selected else{return};app.clearSharedLogin(connection);administrationWindow?.close();administrationWindow=nil;password.stringValue="";games=[];page = .login;feedback="密码已修改，请重新登录。";feedbackIsError=false;render()
+ }
+ private func changeOwnPassword(){
+  guard let connection=selected,let app else{return}
+  do{guard let token=try app.sharedToken(for:connection) else{throw LibraryError("请重新登录。")};let client=try SharedAPI(address:connection.address,certificateSHA256:connection.certificateSHA256)
+   passwordWindow=PasswordWindowController(title:"修改密码",requiresCurrent:true,submit:{old,new in let _:SharedAdminOK=try await client.value("/api/account/password",method:"POST",token:token,body:["oldPassword":old ?? "","newPassword":new])},succeeded:{[weak self] in self?.passwordChanged()},dismissed:{[weak self] in self?.passwordWindow=nil});passwordWindow?.showWindow(nil);passwordWindow?.window?.makeKeyAndOrderFront(nil)
+  }catch{status(error.localizedDescription,error:true)}
  }
  private func advanced(){
   guard !loading else{return}
@@ -357,9 +354,9 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
  private func openAdministration(){
   guard let connection=selected,connection.isAdministrator,let app else{return}
   do{
-   if administrationWindow==nil{administrationWindow=try SharedAdministrationWindowController(app:app,connection:connection,showGames:true,changed:{[weak self] in
+   if administrationWindow==nil{administrationWindow=try SharedAdministrationWindowController(app:app,connection:connection,changed:{[weak self] in
     guard let self,!self.closed,self.selected?.id==connection.id else{return};self.loadCatalog()
-   },onClose:{[weak self] in self?.administrationWindow=nil})}
+   },onClose:{[weak self] in self?.administrationWindow=nil},signedOut:{[weak self] in self?.passwordChanged()})}
    administrationWindow?.showWindow(nil);administrationWindow?.window?.makeKeyAndOrderFront(nil)
   }catch{status(error.localizedDescription,error:true)}
  }

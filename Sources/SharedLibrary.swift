@@ -133,7 +133,7 @@ extension LibraryStore {
    existing.shared=ref;existing.entry=entry;existing.folder=folder
    try update(existing);return existing
   }
-  let game=Game(id:ref.gameIdentity,title:remote.title,folder:folder,originalFolder:"gameshelf://"+ref.storageKey,entry:entry,windowSize:entry.backend == .wine ? "1280x720":nil,shared:ref)
+  let game=Game(id:ref.gameIdentity,title:remote.title,folder:folder,originalFolder:"gameshelf://"+ref.storageKey,entry:entry,windowSize:nil,shared:ref)
   games.append(game)
   do{try save()}catch{games.removeLast();throw error}
   return game

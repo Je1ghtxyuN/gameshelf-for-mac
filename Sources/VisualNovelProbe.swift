@@ -49,7 +49,7 @@ enum VisualNovelProbe {
   let stem = String(normalized.dropLast(4))
   let exact: Set<String> = [
    "エンジン設定", "設定", "设置", "環境設定", "环境设置", "环境设定", "游戏设置", "遊戲設定", "ゲーム設定",
-   "cs2conf", "filecheck", "config", "configuration", "custom", "setting", "settings", "setup", "setup32", "setup64",
+   "thprac", "replayview", "cs2conf", "filecheck", "config", "configuration", "custom", "setting", "settings", "setup", "setup32", "setup64",
    "install", "installer", "unins", "uninstall", "uninstaller", "dxsetup", "vcredist",
    "vcredist_x86", "vcredist_x64", "vc_redist.x86", "vc_redist.x64",
    "dotnet", "dotnetfx", "unitycrashhandler", "unitycrashhandler32",
@@ -57,7 +57,7 @@ enum VisualNovelProbe {
   ]
   // Keep prefix checks at recognizable token/number boundaries. A real title
   // such as CustomAdventure or ConfigurationStory is not a settings tool.
-  let conventional = #"^(?:(?:config|configuration)(?:[0-9]+|[._ -](?:tool|settings?|x86|x64|32|64|jp|ja|en|cn|chs))|(?:unins|uninstall|uninstaller)[0-9]*(?:[._ -][a-z0-9]+)*)$"#
+  let conventional = #"^(?:(?:config|configuration|custom|settings?|replayview|thprac)(?:[0-9]+|[._ -](?:tool|settings?|x86|x64|32|64|jp|ja|en|cn|chs|c|sc|zh[_-]cn))|th[0-9]+[._ -]update[0-9][a-z0-9._-]*|(?:unins|uninstall|uninstaller)[0-9]*(?:[._ -][a-z0-9]+)*)$"#
   return exact.contains(stem) || stem.range(of: conventional, options: .regularExpression) != nil
  }
 

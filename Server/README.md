@@ -225,6 +225,10 @@ Personal cover GET/POST requires an existing device library and a game UUID pres
 
 个人封面 GET/POST 必须先有本账号的设备库及快照内游戏；未知对象返回 **404**，须先上传元数据。其他账号即使使用相同 UUID 也无法访问或插入。元数据移除游戏时，在同一次 CAS 事务中删除对应封面。每库最多 1000 个游戏，因此每账号新增封面记录最多 8 × 1000，每张仍限 256 KiB；已发布游戏的默认封面接口不变。
 
+### Default republication / 默认重新共享
+
+For `POST /api/admin/candidates/{id}/publish`, omitted `savePaths` and `savePaths: []` reuse the sole published edition with the same candidate and source signature, preserving its administrator-reviewed save exclusions, game ID, grants and private workspace. They never clear previous rules. Multiple matching editions or newly detected exclusions return 409 for explicit review; no edition is chosen arbitrarily. Nonempty explicit rules retain the original union-with-detected-defaults behavior and may create a new edition. Changed source bytes remain a separate edition. Existing clients need no new parameter.
+
 ### Published display titles / 已发布游戏标题
 
 Administrators may explicitly update a published game's display title with `POST /api/admin/games/{gameID}/metadata` and exactly `{title:string}`. Surrounding whitespace is trimmed; the result must be nonempty and at most 1024 UTF-8 bytes, without control/format characters. The response is the public game object. Unknown games return 404, malformed bodies 400, nonadministrators 403 and unauthenticated requests 401. Only the display title changes: identity, grants, entries, paths, saves and covers remain intact. An unchanged edition's republication preserves its canonical title while refreshing recognized launchers. Renaming never publishes another game or grants access.
@@ -240,3 +244,9 @@ Restore the configured storage volume before starting the gateway. Compose binds
 For an explicitly pinned endpoint, the Mac client establishes a direct TLS 1.2+ connection and checks the exact leaf fingerprint, hostname and validity. This avoids changing system trust or weakening the app’s global transport policy. An endpoint using normal CA validation continues through the system URL session and proxy policy; a pinned endpoint must be directly reachable from the client.
 
 显式绑定证书的端点使用直接的 TLS 1.2+ 连接，检查叶证书指纹、主机名与有效期，不修改系统信任或应用全局传输策略。普通 CA 验证的端点继续使用系统网络会话及代理策略；绑定证书的端点需要客户端能够直接到达。
+
+### Account passwords and scan reuse
+
+`POST /api/account/password` requires `oldPassword` and `newPassword`. Administrator-only `POST /api/admin/users/{id}/password` accepts `password` for another account. Passwords require at least 12 characters and at most 1024 UTF-8 bytes. Both operations reject active game leases with 409, rotate the salt/hash and revoke the target account’s tokens atomically, retaining its identity, grants, personal metadata and writable spaces.
+
+The client reuses local scan results through administrator-only `POST /api/admin/roots/{id}/candidates` with up to 200 `{relative,entryPath}` selections. The server confines and probes each selected game directory, validates its launcher, computes its current edition signature and save exclusions, and atomically registers candidates. It does not walk unrelated directories or publish games. Explicit publication remains a separate server mutation, presented as one sharing action in the client. Accounts select playable games in their details rather than a separate grants page.

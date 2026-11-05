@@ -100,8 +100,8 @@ def matches_mz_web_profile(directory,fingerprints=None):
 
 
 RESOURCES = set('data gamedata graphics audio image images movies video sound sounds save saves savedata fonts font www js game renpy lib libs runtime runtimes node_modules locales plugins system cache logs tools redist _commonredist prerequisites directx resources contents'.split())
-AUXILIARY = set('cs2conf filecheck helper checker config configuration custom setting settings setup setup32 setup64 install installer unins uninstall uninstaller dxsetup vcredist vcredist_x86 vcredist_x64 vc_redist.x86 vc_redist.x64 dotnet dotnetfx unitycrashhandler unitycrashhandler32 unitycrashhandler64 crashreport crashreporter'.split()) | {'エンジン設定','設定','设置','環境設定','环境设置','环境设定','游戏设置','遊戲設定','ゲーム設定'}
-CONVENTIONAL = re.compile(r'^(?:(?:config|configuration)(?:[0-9]+|[._ -](?:tool|settings?|x86|x64|32|64|jp|ja|en|cn|chs))|(?:unins|uninstall|uninstaller)[0-9]*(?:[._ -][a-z0-9]+)*)$')
+AUXILIARY = set('thprac replayview cs2conf filecheck helper checker config configuration custom setting settings setup setup32 setup64 install installer unins uninstall uninstaller dxsetup vcredist vcredist_x86 vcredist_x64 vc_redist.x86 vc_redist.x64 dotnet dotnetfx unitycrashhandler unitycrashhandler32 unitycrashhandler64 crashreport crashreporter'.split()) | {'エンジン設定','設定','设置','環境設定','环境设置','环境设定','游戏设置','遊戲設定','ゲーム設定'}
+CONVENTIONAL = re.compile(r'^(?:(?:config|configuration|custom|settings?|replayview|thprac)(?:[0-9]+|[._ -](?:tool|settings?|x86|x64|32|64|jp|ja|en|cn|chs|c|sc|zh[_-]cn))|th[0-9]+[._ -]update[0-9][a-z0-9._-]*|(?:unins|uninstall|uninstaller)[0-9]*(?:[._ -][a-z0-9]+)*)$')
 CHINESE = re.compile(r'(?:^|[_\- .\[\(【（])(?:cn|chs|sc|zh[_-]cn)[\]\)】）]*$|(?:中文版|汉化(?:版)?|漢化(?:版)?|简体中文(?:版)?|簡體中文(?:版)?)[\]\)】）]*$')
 
 def header(directory,name,count=2):

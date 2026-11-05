@@ -21,6 +21,7 @@
     "Sources/Onboarding.swift",
     "Sources/OnboardingIntegration.swift",
     "Sources/OnboardingWindow.swift",
+    "Sources/PasswordWindow.swift",
     "Sources/PersonalLibrary.swift",
     "Sources/PersonalLibraryMedia.swift",
     "Sources/PersonalLibrarySync.swift",
@@ -40,6 +41,8 @@
     "Sources/SharedLoginStyle.swift",
     "Sources/SharedNavigation.swift",
     "Sources/SharedProfile.swift",
+    "Sources/SharedScanPublishing.swift",
+    "Sources/SharedScanSelection.swift",
     "Sources/SharedSessionTokens.swift",
     "Sources/SharedWebKit.swift",
     "Sources/SharedWebLaunch.swift",
@@ -47,15 +50,20 @@
     "Sources/SharedWineBootstrap.swift",
     "Sources/UnityCursorAdapter.swift",
     "Sources/VerifiedGameMetadata.swift",
-    "Sources/VisualNovelProbe.swift"
+    "Sources/VisualNovelProbe.swift",
+    "Sources/WineWindowPolicy.swift"
   ],
   "tools": [
     "Tools/Icon.swift",
     "Tools/append_rgss3a.py",
+    "Tools/build_wine_window_helper.sh",
     "Tools/migrate_mz_saves.js",
     "Tools/migrate_renpy_saves.py",
     "Tools/prepare_rgss_dictionary.rb",
-    "Tools/shared_web_storage.js"
+    "Tools/shared_web_storage.js",
+    "Tools/test_wine_window.py",
+    "Tools/wine_window_geometry.h",
+    "Tools/wine_window_launcher.c"
   ],
   "tests": [
     "Tests/CollectionTests.swift",
@@ -94,6 +102,7 @@
     "Tests/SharedLibraryTests.swift",
     "Tests/SharedNavigationTests.swift",
     "Tests/SharedProfileTests.swift",
+    "Tests/SharedScanSelectionTests.swift",
     "Tests/SharedSessionTokensTests.swift",
     "Tests/SharedWebKitIntegrationTests.swift",
     "Tests/SharedWebSaveStoreTests.swift",
@@ -104,6 +113,9 @@
     "Tests/VerifiedGameMetadataTests.swift",
     "Tests/VisualNovelImportTests.swift",
     "Tests/VisualNovelProbeTests.swift",
+    "Tests/WineWindowFixture.c",
+    "Tests/WineWindowGeometryTests.c",
+    "Tests/WineWindowPolicyTests.swift",
     "Tests/test_renpy_save_migration.py",
     "Tests/test_shared_https_bundle.py"
   ],
@@ -118,7 +130,8 @@
     "test.sh",
     "export-manifest.json",
     "README_zh-CN.md",
-    "package-dmg.sh"
+    "package-dmg.sh",
+    "LICENSE-WineWindow-toolchain.txt"
   ],
   "excluded": [
     "Tests/WineSmoke.swift",
@@ -165,6 +178,7 @@
     "Server/gameshelf_server/web/admin.css",
     "Server/gameshelf_server/web/admin.html",
     "Server/gameshelf_server/web/admin.js",
+    "Server/gameshelf_server/workflow.py",
     "Server/tests/test_account_bounds.py",
     "Server/tests/test_admin_ui.js",
     "Server/tests/test_discovery_mz.py",
@@ -174,7 +188,9 @@
     "Server/tests/test_linux_integration.py",
     "Server/tests/test_onboarding.py",
     "Server/tests/test_privacy.py",
+    "Server/tests/test_republish_rules.py",
     "Server/tests/test_runtime.py",
-    "Server/tests/test_service.py"
+    "Server/tests/test_service.py",
+    "Server/tests/test_shared_workflow.py"
   ]
 }

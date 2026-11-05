@@ -13,6 +13,7 @@ import time
 import uuid
 
 from .common import APIError, locked, text
+from .workflow import SharedWorkflow
 
 def uid():
     return uuid.uuid4().hex
@@ -76,7 +77,7 @@ def tree_signature(root, limit=100000, source_root=None):
 
 from .accounts import AccountFeatures
 
-class Service(AccountFeatures):
+class Service(AccountFeatures,SharedWorkflow):
     def __init__(self, state, driver, allowed_sources, clock=time.time, token_ttl=86400, lease_ttl=90):
         self.state = clean_path(state)
         self.allowed = [clean_path(p) for p in allowed_sources]
@@ -370,7 +371,24 @@ class Service(AccountFeatures):
             raise APIError(400,'savePaths must be an array')
         rules = normalize_rules(json.loads(row['save_paths'])+(save_paths or []),lower)
         encoded = json.dumps(rules,sort_keys=True)
-        existing = self.db.execute('SELECT * FROM games WHERE candidate_id=? AND signature=? AND save_paths=?', (candidate_id, row['signature'],encoded)).fetchone()
+        existing = None
+        if not save_paths:
+            # Empty/omitted rules mean default republication, NOT permission to
+            # remove an existing edition's administrator-reviewed exclusions.
+            editions = self.db.execute('SELECT * FROM games WHERE candidate_id=? AND signature=? LIMIT 2',
+                                       (candidate_id,row['signature'])).fetchall()
+            if len(editions)>1:
+                raise APIError(409,'Multiple save-rule editions exist; specify reviewed savePaths')
+            if editions:
+                existing=editions[0]
+                # Validate the retained boundary against the current source.
+                # New automatic exclusions require review rather than silently
+                # mutating an existing private workspace's isolation contract.
+                retained=normalize_rules(json.loads(existing['save_paths']),lower)
+                if any(rule not in retained for rule in rules):
+                    raise APIError(409,'Detected save exclusions changed; specify reviewed savePaths')
+        if existing is None:
+            existing = self.db.execute('SELECT * FROM games WHERE candidate_id=? AND signature=? AND save_paths=?', (candidate_id, row['signature'],encoded)).fetchone()
         if existing:
             # Explicit selected publication may add a newly validated launcher
             # to unchanged source bytes. Keep edition identity/private saves and

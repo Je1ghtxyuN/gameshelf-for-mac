@@ -11,7 +11,7 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
  private weak var app:App?
  private let store:DiscoveryStore
  private let sources=NSPopUpButton()
- private let modes=NSSegmentedControl(labels:["待添加","已添加","已忽略"],trackingMode:.selectOne,target:nil,action:nil)
+ private let modes=NSSegmentedControl(labels:["全部","已加入","已忽略"],trackingMode:.selectOne,target:nil,action:nil)
  private let table=NSTableView()
  private let status=NSTextField(labelWithString:"")
  private let spinner=NSProgressIndicator()
@@ -25,6 +25,8 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
  private var closed=false
  private var addAction:NSButton?
  private var ignoreAction:NSButton?
+ private var shareAction:NSButton?
+ private var sharing=false
  private var cancelAction:NSButton?
 
  init(app:App)throws {
@@ -58,10 +60,11 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
    table.addTableColumn(column)
   }
   let ignore=button("忽略所选"){[weak self] in self?.ignoreSelected()}
-  let addSelected=button("添加所选"){[weak self] in self?.addSelected()}
+  let addSelected=button("加入本机游戏库"){[weak self] in self?.addSelected()}
   ignoreAction=ignore;addAction=addSelected
   selectedCount.font = .systemFont(ofSize:12);selectedCount.textColor = .secondaryLabelColor
-  let footer=app.stack([selectedCount,NSView(),ignore,addSelected],spacing:10)
+  let share=button("共享所选"){[weak self] in self?.shareSelected()};shareAction=share
+  let footer=app.stack([selectedCount,NSView(),ignore,share,addSelected],spacing:10)
   let layout=app.stack([title,sourceRow,filterRow,scroll,footer],vertical:true,spacing:18);app.pin(layout,to:content,inset:26)
   for view in [sourceRow,filterRow,scroll,footer]{view.widthAnchor.constraint(equalTo:layout.widthAnchor).isActive=true}
   scroll.heightAnchor.constraint(greaterThanOrEqualToConstant:180).isActive=true;scroll.setContentHuggingPriority(.defaultLow,for:.vertical)
@@ -119,12 +122,18 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
   }
  }
  private func reloadRows(){
-  records=source.map{store.records(sourceID:$0.id).filter{$0.status==state}.sorted{$0.game.relativePath.localizedStandardCompare($1.game.relativePath) == .orderedAscending}} ?? []
+  records=source.map{store.records(sourceID:$0.id).filter{state == .pending ? $0.status != .ignored:$0.status==state}.compactMap{record in
+   var row=record;row.game.entries=row.game.entries.filter(SharedScanSelection.launchable)
+   guard !row.game.entries.isEmpty else{return nil}
+   if let selected=row.selectedEntry,!row.game.entries.contains(where:{$0.path==selected.path && $0.backend==selected.backend}){row.selectedEntry=nil}
+   return row
+  }.sorted{$0.game.relativePath.localizedStandardCompare($1.game.relativePath) == .orderedAscending}} ?? []
   checked.formIntersection(Set(records.map{$0.game.id}));table.reloadData();updateSelection()
  }
  private func updateSelection(){
   selectedCount.stringValue=checked.isEmpty ? "\(records.count) 项":"已选择 \(checked.count) 项"
-  addAction?.isEnabled = !scanning && state == .pending && !checked.isEmpty
+  shareAction?.isEnabled = !scanning && !sharing && state != .ignored && !checked.isEmpty
+  addAction?.isEnabled = !scanning && !sharing && state == .pending && records.contains(where:{checked.contains($0.game.id) && $0.status == .pending})
   ignoreAction?.isEnabled = !scanning && state != .added && !checked.isEmpty
   ignoreAction?.title=state == .ignored ? "恢复所选":"忽略所选"
  }
@@ -163,7 +172,7 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
  private func addSelected(){
   guard let app,let source,!scanning,!app.busy,state == .pending else{return}
   var count=0,errors:[String]=[],added:[Game]=[],previous=Set(app.store.games.map(\.id))
-  for record in records where checked.contains(record.game.id) && record.available {
+  for record in records where checked.contains(record.game.id) && record.available && record.status == .pending {
    do{
     let chosen=entry(record),folder=URL(fileURLWithPath:source.path).appendingPathComponent(record.game.relativePath)
     var game=try app.store.add(source:folder,candidate:chosen)
@@ -175,10 +184,16 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
   checked=[];reloadRows();app.showLibrary();status.stringValue="已添加 \(count) 款游戏"+(errors.first.map{" · "+$0} ?? "")
   if UserDefaults.standard.object(forKey:"AutoOnlineCover") as? Bool != false{for game in added where game.cover==nil{app.findCover(game,automatic:true)}}
  }
+ private func shareSelected(){
+  guard !scanning,!sharing,let app,!app.busy,let source else{return}
+  let selected=records.filter{checked.contains($0.game.id) && $0.available}
+  guard !selected.isEmpty else{return};sharing=true;updateSelection();status.stringValue="正在准备共享…"
+  app.shareScanned(selected,source:source){[weak self] message in guard let self,!self.closed else{return};self.sharing=false;self.status.stringValue=message;self.updateSelection()}
+ }
  private func ignoreSelected(){
   guard !scanning else{return}
   do{
-   for record in records where checked.contains(record.game.id){if state == .ignored{try store.restore(record.game.id)}else{try store.ignore(record.game.id)}}
+   for record in records where checked.contains(record.game.id) && record.status != .added{if state == .ignored{try store.restore(record.game.id)}else{try store.ignore(record.game.id)}}
    checked=[];reloadRows();status.stringValue=state == .ignored ? "已恢复所选项目":"已忽略所选项目"
   }catch{status.stringValue=error.localizedDescription}
  }
