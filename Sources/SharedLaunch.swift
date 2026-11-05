@@ -29,7 +29,10 @@ extension App {
   return try SharedCredentialStore.read(connectionID:connection.id)
  }
  @objc func showSharedLibrary(){
-  do{if sharedLibraryWindow==nil{sharedLibraryWindow=try SharedLibraryWindowController(app:self)};sharedLibraryWindow?.showWindow(nil);sharedLibraryWindow?.window?.makeKeyAndOrderFront(nil)}catch{errorAlert(error)}
+  do{if sharedLibraryWindow==nil{sharedLibraryWindow=try SharedLibraryWindowController(app:self)};sharedLibraryWindow?.openLibrary();sharedLibraryWindow?.showWindow(nil);sharedLibraryWindow?.window?.makeKeyAndOrderFront(nil)}catch{errorAlert(error)}
+ }
+ func showSharedAccount(connectionID:UUID){
+  do{if sharedLibraryWindow==nil{sharedLibraryWindow=try SharedLibraryWindowController(app:self)};sharedLibraryWindow?.openAccount(connectionID:connectionID);sharedLibraryWindow?.showWindow(nil);sharedLibraryWindow?.window?.makeKeyAndOrderFront(nil)}catch{errorAlert(error)}
  }
  @objc func showDiscovery(){
   do{if discoveryWindow==nil{discoveryWindow=try DiscoveryWindowController(app:self)};discoveryWindow?.showWindow(nil);discoveryWindow?.window?.makeKeyAndOrderFront(nil)}catch{errorAlert(error)}

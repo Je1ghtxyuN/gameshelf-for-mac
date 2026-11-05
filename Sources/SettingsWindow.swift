@@ -267,7 +267,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
    if let binding=(try? PersonalLibraryBindingStore(root:app.root))?.binding,
       let connection=(try? SharedConnectionStore(root:app.root))?.connections.first(where:{$0.serverID==binding.serverID && $0.accountID==binding.accountID}) {
     let name=connection.username+(connection.isAdministrator ? " · 管理员":"")
-    card("个人账号",views:[label(name,size:16,weight:.medium),actions([button("管理账号"){[weak app] in app?.showSharedLibrary()},button("同步资料"){[weak app] in app?.syncPersonalLibrary(force:true)}])])
+    card("个人账号",views:[label(name,size:16,weight:.medium),actions([button("管理账号"){[weak app] in app?.showSharedAccount(connectionID:connection.id)},button("同步资料"){[weak app] in app?.syncPersonalLibrary(force:true)}])])
    }
   case 1:
    let checkbox = SettingsActionButton("导入时自动联网匹配封面") {}
