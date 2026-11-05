@@ -164,7 +164,11 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
   case "entry":value=entryName(chosen,game:record.game)
   default:value=""
   }
-  let text=NSTextField(labelWithString:value);text.font = .systemFont(ofSize:13,weight:column=="title" ? .medium:.regular);text.lineBreakMode = .byTruncatingMiddle;text.toolTip=record.game.relativePath;text.textColor=record.available ? .labelColor:.secondaryLabelColor;return text
+  let text=NSTextField(labelWithString:value);text.font = .systemFont(ofSize:13,weight:column=="title" ? .medium:.regular);text.lineBreakMode = .byTruncatingMiddle;text.toolTip=record.game.relativePath;text.textColor=record.available ? .labelColor:.secondaryLabelColor
+  let cell=NSTableCellView();cell.textField=text;cell.addSubview(text);text.translatesAutoresizingMaskIntoConstraints=false
+  text.alignment = .left;text.maximumNumberOfLines=1;text.usesSingleLineMode=true
+  NSLayoutConstraint.activate([text.leadingAnchor.constraint(equalTo:cell.leadingAnchor),text.trailingAnchor.constraint(equalTo:cell.trailingAnchor),text.centerYAnchor.constraint(equalTo:cell.centerYAnchor),text.heightAnchor.constraint(equalToConstant:20)])
+  cell.toolTip=record.game.relativePath;return cell
  }
  @objc private func checkedChanged(_ button:NSButton){guard let id=button.identifier?.rawValue,let record=records.first(where:{$0.game.id==id}),selectionPolicy(record).selectable else{return};if button.state == .on{checked.insert(id)}else{checked.remove(id)};updateSelection()}
  @objc private func entrySelected(_ popup:NSPopUpButton){

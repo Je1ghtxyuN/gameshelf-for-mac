@@ -219,7 +219,9 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   let topWrap=NSView();pin(top,to:topWrap,inset:22);topWrap.heightAnchor.constraint(equalToConstant:70).isActive=true
   let line=NSBox();line.boxType = .separator
   let scroll=NSScrollView();scroll.hasVerticalScroller=true;scroll.drawsBackground=false
-  let scrollWrap=NSView();pin(scroll,to:scrollWrap,inset:30)
+  let scrollWrap=NSView();scroll.translatesAutoresizingMaskIntoConstraints=false;scrollWrap.addSubview(scroll)
+  // Keep the scroller at the outer edge, separate from the card columns.
+  NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo:scrollWrap.leadingAnchor,constant:30),scroll.trailingAnchor.constraint(equalTo:scrollWrap.trailingAnchor,constant:-8),scroll.topAnchor.constraint(equalTo:scrollWrap.topAnchor,constant:30),scroll.bottomAnchor.constraint(equalTo:scrollWrap.bottomAnchor,constant:-30)])
   status=label(statusMessage,size:13);status.textColor = .labelColor;status.lineBreakMode = .byTruncatingMiddle
   status.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
   let spinner=NSProgressIndicator();spinner.style = .spinning;spinner.controlSize = .small;spinner.isDisplayedWhenStopped=false
@@ -359,7 +361,9 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
    return
   }
 
-  let rows=stack([],vertical:true,spacing:28);pin(rows,to:doc)
+  let rows=stack([],vertical:true,spacing:28);rows.translatesAutoresizingMaskIntoConstraints=false;doc.addSubview(rows)
+  // A fixed gutter also protects cards while overlay scrollbars are visible.
+  NSLayoutConstraint.activate([rows.leadingAnchor.constraint(equalTo:doc.leadingAnchor),rows.trailingAnchor.constraint(equalTo:doc.trailingAnchor,constant:-24),rows.topAnchor.constraint(equalTo:doc.topAnchor),rows.bottomAnchor.constraint(equalTo:doc.bottomAnchor)])
   for start in stride(from:0,to:games.count,by:3){
    let row=stack([],spacing:22);row.distribution = .fillEqually;row.alignment = .top
    rows.addArrangedSubview(row);row.widthAnchor.constraint(equalTo:rows.widthAnchor).isActive=true

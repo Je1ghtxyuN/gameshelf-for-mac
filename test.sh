@@ -38,6 +38,8 @@ run_swift SharedScanSelection Sources/Core.swift Sources/SharedScanSelection.swi
 run_swift DiscoverySelectionPolicy Sources/Core.swift Sources/LibraryDiscovery.swift Sources/DiscoverySelectionPolicy.swift
 run_swift SharedPublishSelection Sources/Core.swift Sources/LibraryDiscovery.swift Sources/SharedScanSelection.swift Sources/SharedPublishSelection.swift
 run_swift SharedEntryFingerprint Sources/Core.swift Sources/SharedEntryFingerprint.swift
+run_swift SharedPublicationBatch Sources/SharedPublicationBatch.swift
+run_swift SharedPublicationError Sources/Core.swift Sources/SharedLibrary.swift Sources/SharedPublicationError.swift
 run_swift WineWindowPolicy Sources/Core.swift Sources/Runtime.swift Sources/WineWindowPolicy.swift
 clang -Wall -Wextra -Werror Tests/WineWindowGeometryTests.c -o build/WineWindowGeometryTests
 build/WineWindowGeometryTests

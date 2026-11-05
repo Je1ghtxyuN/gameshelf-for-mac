@@ -84,9 +84,57 @@ struct SharedLoginUser:Codable {var id:String;var username:String;var admin:Bool
 struct SharedLoginResponse:Codable {var token:String;var user:SharedLoginUser;var serverID:String}
 struct SharedServerInfo:Codable {var name:String;var serverID:String;var version:String;var setupRequired:Bool?=nil}
 struct SharedRequestError:LocalizedError {
+ enum Reason:String {
+  case scanBusy,rulesReview,sourceChanged,rootChanged,unicodePathAmbiguous,folderMissing,pathMismatch,entryNotRecognized
+  case fingerprintMismatch,entryChanged,entryUnsupported,reservedProfile,tooManyEntries
+  case candidateMissing,rootMissing,coverMissing,invalidTitle,invalidCover,coverTooLarge,writeLease,provisioning,passwordGameRunning,sourceUnavailable,serviceUnavailable
+ }
  let statusCode:Int
+ let reason:Reason?
+ init(statusCode:Int){self.statusCode=statusCode;reason=nil}
+ init(statusCode:Int,responseBody:Data?){
+  self.statusCode=statusCode
+  reason=Self.parseReason(statusCode:statusCode,body:responseBody)
+ }
+ private static func parseReason(statusCode:Int,body:Data?)->Reason? {
+  // Never retain the raw body/message, even in debug descriptions or errors.
+  guard let body,body.count<=4096,
+   let object=(try? JSONSerialization.jsonObject(with:body)) as? [String:Any],Set(object.keys)==["error"],
+   let error=object["error"] as? [String:Any],Set(error.keys)==["code","message"],
+   let code=error["code"] as? Int,code==statusCode,
+   let message=error["message"] as? String,message.utf8.count<=512,
+   !message.unicodeScalars.contains(where:{CharacterSet.controlCharacters.contains($0)}) else{return nil}
+  switch (statusCode,message) {
+  case (409,"Another scan is running"):return .scanBusy
+  case (409,"Ambiguous Unicode path component"):return .unicodePathAmbiguous
+  case (409,"Multiple save-rule editions exist; specify reviewed savePaths"),(409,"Detected save exclusions changed; specify reviewed savePaths"):return .rulesReview
+  case (409,"Edition changed; scan and publish a new edition"),(409,"Source root changed during scan; retry"):return .sourceChanged
+  case (409,"Root changed"),(409,"Root registration changed during scan"):return .rootChanged
+  case (404,"Selected game is unavailable on this server"),(404,"Selected path is unavailable on this server"),(404,"Selected directory is unavailable on this server"):return .folderMissing
+  case (400,"Expected a confined relative path"),(400,"Game escapes configured root"),(400,"Game escapes root"),(400,"Invalid relative path"):return .pathMismatch
+  case (400,"Selected entry is not a game launcher on this server"):return .entryNotRecognized
+  case (412,"Selected entry fingerprint does not match"):return .fingerprintMismatch
+  case (412,"Entry changed during fingerprint verification"):return .entryChanged
+  case (400,"Entry fingerprint requires a regular file"),(400,"Entry fingerprint file type or size is unsupported"),(400,"Entry fingerprint file exceeds its limit"),(400,"Entry fingerprint cannot read a regular unlinked file"),(400,"Selected path cannot be read without following links"),(400,"Selected path contains a special file"),(400,"Symlink roots are not allowed"):return .entryUnsupported
+  case (409,"Selected path changed"):return .entryChanged
+  case (400,"Reserved profile path"),(400,"Reserved profile path exists in source"):return .reservedProfile
+  case (400,"Too many directory entries"):return .tooManyEntries
+  case (404,"Candidate not found"):return .candidateMissing
+  case (404,"Root not found"):return .rootMissing
+  case (404,"Cover not found"):return .coverMissing
+  case (400,"Invalid display title"):return .invalidTitle
+  case (400,"Base64 JPEG required"),(400,"Invalid base64 JPEG"),(400,"Invalid or oversized JPEG dimensions"):return .invalidCover
+  case (413,"Cover exceeds 256 KiB"):return .coverTooLarge
+  case (409,"Game already has a write lease; release it first"),(409,"Game already has a write lease"):return .writeLease
+  case (409,"Workspace is being provisioned"):return .provisioning
+  case (409,"Save and quit running games before changing the password"):return .passwordGameRunning
+  case (503,"Selected game cannot be read"),(503,"Source unavailable"),(503,"Game unavailable"):return .sourceUnavailable
+  case (503,"Service unavailable"):return .serviceUnavailable
+  default:return nil
+  }
+ }
  var errorDescription:String? {
-  switch statusCode {case 401:return "登录已失效，请重新登录共享库。";case 403:return "此账号没有访问权限。";case 409:return "此游戏仍由另一个会话使用，请先退出。";default:return "共享库请求失败（\(statusCode)）。"}
+  switch statusCode {case 401:return "登录已失效，请重新登录共享库。";case 403:return "此账号没有访问权限。";case 409:return "共享库状态冲突，请核对后重试。";default:return "共享库请求失败（\(statusCode)）。"}
  }
 }
 
@@ -189,7 +237,7 @@ final class SharedAPI {
    if let error{completion(.failure(error));return}
    guard let http=response as? HTTPURLResponse,let data,data.count<=8*1024*1024 else{completion(.failure(LibraryError("共享库响应无效或过大。")));return}
    guard (200..<300).contains(http.statusCode) else {
-    completion(.failure(SharedRequestError(statusCode:http.statusCode)));return
+    completion(.failure(SharedRequestError(statusCode:http.statusCode,responseBody:data)));return
    }
    do{completion(.success(try JSONDecoder().decode(T.self,from:data)))}catch{completion(.failure(LibraryError("共享库响应格式不兼容。")))}
   }

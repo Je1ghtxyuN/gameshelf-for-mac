@@ -113,7 +113,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
   sidebar.addSubview(items)
   let symbols = ["slider.horizontal.3", "photo.on.rectangle", "internaldrive", "shippingbox", "info.circle"]
   for index in titles.indices {
-   let button = SettingsActionButton(titles[index]) { [weak self] in
+   let button = SettingsActionButton(titles[index], padded: true) { [weak self] in
     guard let self else { return }
     self.window?.makeFirstResponder(nil)
     self.selectedPage = index
@@ -466,13 +466,21 @@ private final class SettingsFlippedView: NSView {
 }
 private final class SettingsActionButton: NSButton {
  var actionBlock: () -> Void
- init(_ title: String, action: @escaping () -> Void) {
+ init(_ title: String, padded: Bool = false, action: @escaping () -> Void) {
   actionBlock = action
   super.init(frame: .zero)
+  if padded { cell = SettingsNavigationButtonCell(textCell: title) }
   self.title = title
   target = self
   self.action = #selector(invoke)
  }
  required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
  @objc private func invoke() { actionBlock() }
+}
+
+/// Insets only navigation artwork/text; the selected layer keeps its full bounds.
+private final class SettingsNavigationButtonCell: NSButtonCell {
+ override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
+  super.drawInterior(withFrame: cellFrame.insetBy(dx: 12, dy: 0), in: controlView)
+ }
 }

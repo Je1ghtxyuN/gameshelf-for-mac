@@ -5,10 +5,71 @@ import json
 import os
 import re
 import stat
+import unicodedata
 from pathlib import Path
 import secrets
 from .common import APIError, locked, text
 from .accounts import fields, utf8_text
+
+def _canonical_relative(root, value, *, directory=False):
+    """Resolve unique NFC-equivalent names, retaining bytes on disk, never links."""
+    value = text(value, 4096)
+    if value != '.' and (Path(value).is_absolute() or any(c in value for c in '\\:') or
+                         any(part in ('', '.', '..') for part in value.split('/'))):
+        raise APIError(400, 'Expected a confined relative path')
+    parts = () if value == '.' else value.split('/')
+    descriptor = None
+    actual = []
+    try:
+        descriptor = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        for part in root.parts[1:]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        for index, part in enumerate(parts):
+            key = unicodedata.normalize('NFC', part)
+            matches = []
+            with os.scandir(descriptor) as items:
+                for count, item in enumerate(items, 1):
+                    if count > 10000:
+                        raise APIError(400, 'Too many directory entries')
+                    if unicodedata.normalize('NFC', item.name) == key:
+                        matches.append(item.name)
+                        # Even an exact spelling cannot select between distinct
+                        # canonically equivalent names in a case-sensitive NAS.
+                        if len(matches) > 1:
+                            raise APIError(409, 'Ambiguous Unicode path component')
+            if not matches:
+                raise APIError(404, 'Selected path is unavailable on this server')
+            name = matches[0]
+            info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+            if stat.S_ISLNK(info.st_mode):
+                raise APIError(400, 'Symlink roots are not allowed')
+            if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
+                raise APIError(400, 'Selected path contains a special file')
+            need_directory = directory or index < len(parts)-1
+            if need_directory and not stat.S_ISDIR(info.st_mode):
+                raise APIError(404, 'Selected directory is unavailable on this server')
+            flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+            if need_directory:
+                flags |= os.O_DIRECTORY
+            child = os.open(name, flags, dir_fd=descriptor)
+            opened = os.fstat(child)
+            if (info.st_dev, info.st_ino, info.st_mode) != (opened.st_dev, opened.st_ino, opened.st_mode):
+                os.close(child)
+                raise APIError(409, 'Selected path changed')
+            os.close(descriptor)
+            descriptor = child
+            actual.append(name)
+        return '/'.join(actual) if actual else '.'
+    except FileNotFoundError:
+        raise APIError(404, 'Selected path is unavailable on this server') from None
+    except OSError:
+        raise APIError(400, 'Selected path cannot be read without following links') from None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
 
 def _entry_sha256(folder, selected):
     """Bounded full-file proof; no writes, no symlinks, no authority lock."""
@@ -114,11 +175,17 @@ class SharedWorkflow:
             from .discovery import discover
             from .privacy import detect_rules
             records=[]
+            resolved = set()
             for relative,entry,fingerprint in parsed:
+                relative = _canonical_relative(root, relative, directory=True)
+                if relative in resolved:
+                    raise APIError(409, 'Ambiguous Unicode path component')
+                resolved.add(relative)
                 folder=clean_path(root/relative)
                 if folder!=root and root not in folder.parents: raise APIError(400,'Game escapes configured root')
                 if not folder.is_dir(): raise APIError(404,'Selected game is unavailable on this server')
                 if (folder/'.gameshelf-profile').exists() or (folder/'.gameshelf-profile').is_symlink(): raise APIError(400,'Reserved profile path')
+                entry = _canonical_relative(folder, entry)
                 try:
                     nodes=list(folder.iterdir())
                     if len(nodes)>10000: raise APIError(400,'Too many directory entries')
