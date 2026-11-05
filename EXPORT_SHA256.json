@@ -141,7 +141,7 @@
   "Tools/migrate_renpy_saves.py": "f7559746279f2c0544ed83dd89d850a055edde4d6a08b5024563649e493171a2",
   "Tools/prepare_rgss_dictionary.rb": "92e8eafc3557bc9af771d72820ce2e2238117cb560c5c31a0d00716f3e35893e",
   "Tools/shared_web_storage.js": "f429a1de2845641a63ab820b38e7d703075de94d044a8af8f2d1314d4e5c979f",
-  "build.sh": "2259046a3f60c3907c05c13e68593b4d88ffeff6f855019b41707b3f2f9dca27",
+  "build.sh": "3f739fa2aa2090aec1cdf22e0a3c7e32fbbf4d012143e41d220e5f797ddf6815",
   "export-manifest.json": "04fa8035a1601ba6781c0f7b1d0f27a7061f2982c6896fa15482594d094e5983",
   "package-dmg.sh": "b2a2deb95544f982546a5ff92adf0a814f62e4078f3cdf88df9aa12530264e0c",
   "test.sh": "feb5aef56ee0dacdc1da80a51b9de54c875411bf783f0fcb2d8e4ebfb5d894a6"
