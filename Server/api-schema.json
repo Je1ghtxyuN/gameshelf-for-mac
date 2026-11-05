@@ -757,14 +757,16 @@
         "games": [
           {
             "relative": "confined relative directory",
-            "entryPath": "selected game entry"
+            "entryPath": "selected game entry",
+            "entrySHA256": "optional 64 lowercase hex characters; full selected-file SHA-256"
           }
         ]
       },
       "response": {
-        "candidates": "existing candidate schema"
+        "candidates": "existing candidate schema",
+        "entryFingerprintsVerified": "boolean; true only when EVERY submitted game supplied entrySHA256 and ALL checks succeeded"
       },
-      "description": "Reuse 1..200 selected local scan results. Re-probe only selected server directories, validate entry with server discovery, compute signature and save exclusions, recheck administrator and root registration, atomically upsert candidate IDs. Never publishes games or trusts client-supplied engine/entry metadata; never walks unrelated source directories."
+      "description": "Optional entrySHA256 is checked read-only before any candidate upsert: ordinary selected regular files use full streamed SHA-256, max 128 MiB. A server-discovered native .app directory (entryPath='.' or relative App.app) uses its Contents/Info.plist, max 1 MiB. All path components and the file reject symlinks. Malformed digests, unsupported files/links and over-limit files return 400; digest mismatch or a file changed/replaced during reading returns 412; the whole batch remains unchanged. Legacy callers may omit the field; mixed/legacy batches receive entryFingerprintsVerified=false. Automatic client root guesses must require true; a missing acknowledgment from an older server never proves verification. This compares entry bytes only, not physical NAS identity or all game assets; engines/Info.plist may be shared across games. No client absolute paths are sent. Reuse 1..200 selected local scan results. Re-probe only selected server directories, validate entry with server discovery, compute signature and save exclusions, recheck administrator and root registration, atomically upsert candidate IDs. Never publishes games or trusts client-supplied engine/entry metadata; never walks unrelated source directories."
     }
   },
   "statusCodes": {
@@ -774,6 +776,7 @@
     "403": "admin required or no game grant",
     "404": "not found or another account's lease",
     "409": "CAS revision conflict, initialized service, duplicate username/root, active writer, changed edition or expired heartbeat",
+    "412": "Selected entry SHA-256 mismatch or entry changed/replaced during fingerprint verification; no candidates from this batch registered",
     "413": "Default body >16 KiB; dedicated personal snapshot ≤512 KiB (+1024-byte envelope); cover ≤256 KiB decoded (+base64 envelope). Other routes keep 16 KiB. Account metadata quota: max 8 libraries and full actual JSON list max 4 MiB; quota failures roll back writes.",
     "415": "JSON required",
     "429": "login throttled",

@@ -23,7 +23,7 @@ struct SharedAdminSaveRule:Codable {
   return result
  }
 }
-struct SharedAdminCandidates:Decodable {let candidates:[SharedAdminCandidate]}
+struct SharedAdminCandidates:Decodable {let candidates:[SharedAdminCandidate];let entryFingerprintsVerified:Bool?}
 struct SharedAdminUser:Decodable {let id:String;let username:String;let admin:Bool;let disabled:Bool}
 struct SharedAdminUsers:Decodable {let users:[SharedAdminUser]}
 struct SharedAdminGrant:Decodable {let userID:String;let gameID:String}

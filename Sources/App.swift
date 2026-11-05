@@ -74,6 +74,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  var sharedLibraryWindow:SharedLibraryWindowController?
  var sharedSessions:[UUID:SharedRunningSession]=[:]
  var sharedAccessTokens=SharedSessionTokens()
+ var rejectedSharedMappingGuesses=Set<String>()
  var saveMigrationPlans:[UUID:MZSaveArchive]=[:]
  var sharedWebKitSession:SharedWebKitSession?
  var leavingWebGame=false
@@ -270,6 +271,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   func item(_ title:String,_ action:@escaping()->Void)->ActionMenuItem{let i=ActionMenuItem(title,action);i.isEnabled = !busy;return i}
   menu.addItem(item("开始游戏"){[weak self] in self?.launch(game)})
   menu.addItem(item(game.favorite ? "取消收藏":"添加至收藏"){[weak self] in guard let self,!self.busy else{return};var updated=game;updated.favorite.toggle();do{try self.store.update(updated);self.showLibrary()}catch{self.errorAlert(error)}})
+  if game.shared==nil{menu.addItem(item("共享到游戏库…"){[weak self] in self?.shareLibraryGame(game)})}
   menu.addItem(.separator())
   let selected=store.collectionIDs(for:id)
   let add=NSMenuItem(title:"添加至",action:nil,keyEquivalent:"");let addMenu=NSMenu();addMenu.autoenablesItems=false;add.isEnabled = !busy

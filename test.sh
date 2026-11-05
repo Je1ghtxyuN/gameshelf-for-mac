@@ -35,6 +35,9 @@ run_swift VisualNovelImport Sources/Core.swift
 run_swift LibraryDiscovery Sources/Core.swift Sources/LibraryDiscovery.swift
 run_swift DiscoveryPresentation Sources/Core.swift Sources/DiscoveryPresentation.swift
 run_swift SharedScanSelection Sources/Core.swift Sources/SharedScanSelection.swift
+run_swift DiscoverySelectionPolicy Sources/Core.swift Sources/LibraryDiscovery.swift Sources/DiscoverySelectionPolicy.swift
+run_swift SharedPublishSelection Sources/Core.swift Sources/LibraryDiscovery.swift Sources/SharedScanSelection.swift Sources/SharedPublishSelection.swift
+run_swift SharedEntryFingerprint Sources/Core.swift Sources/SharedEntryFingerprint.swift
 run_swift WineWindowPolicy Sources/Core.swift Sources/Runtime.swift Sources/WineWindowPolicy.swift
 clang -Wall -Wextra -Werror Tests/WineWindowGeometryTests.c -o build/WineWindowGeometryTests
 build/WineWindowGeometryTests

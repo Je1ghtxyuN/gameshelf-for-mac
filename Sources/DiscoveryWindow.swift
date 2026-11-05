@@ -130,11 +130,13 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
   }.sorted{$0.game.relativePath.localizedStandardCompare($1.game.relativePath) == .orderedAscending}} ?? []
   checked.formIntersection(Set(records.map{$0.game.id}));table.reloadData();updateSelection()
  }
+ private func selectionPolicy(_ record:DiscoveryRecord)->DiscoverySelectionPolicy{DiscoverySelectionPolicy(status:record.status,available:record.available,view:state,scanning:scanning,sharing:sharing)}
  private func updateSelection(){
   selectedCount.stringValue=checked.isEmpty ? "\(records.count) 项":"已选择 \(checked.count) 项"
-  shareAction?.isEnabled = !scanning && !sharing && state != .ignored && !checked.isEmpty
-  addAction?.isEnabled = !scanning && !sharing && state == .pending && records.contains(where:{checked.contains($0.game.id) && $0.status == .pending})
-  ignoreAction?.isEnabled = !scanning && state != .added && !checked.isEmpty
+  let selected=records.filter{checked.contains($0.game.id)}
+  shareAction?.isEnabled = selected.contains{selectionPolicy($0).shareable}
+  addAction?.isEnabled = selected.contains{selectionPolicy($0).importable}
+  ignoreAction?.isEnabled = selected.contains{selectionPolicy($0).ignorable || selectionPolicy($0).restorable}
   ignoreAction?.title=state == .ignored ? "恢复所选":"忽略所选"
  }
  func numberOfRows(in tableView:NSTableView)->Int{records.count}
@@ -147,11 +149,11 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
   guard records.indices.contains(row),let column=tableColumn?.identifier.rawValue else{return nil}
   let record=records[row],chosen=entry(record)
   if column=="check" {
-   let checkbox=NSButton(checkboxWithTitle:"",target:self,action:#selector(checkedChanged(_:)));checkbox.identifier=NSUserInterfaceItemIdentifier(record.game.id);checkbox.setAccessibilityLabel("选择 "+record.game.title);checkbox.state=checked.contains(record.game.id) ? .on:.off;checkbox.isEnabled = !scanning && ((state == .pending && record.available) || state == .ignored);return checkbox
+   let checkbox=NSButton(checkboxWithTitle:"",target:self,action:#selector(checkedChanged(_:)));checkbox.identifier=NSUserInterfaceItemIdentifier(record.game.id);checkbox.setAccessibilityLabel("选择 "+record.game.title);checkbox.state=checked.contains(record.game.id) ? .on:.off;checkbox.isEnabled = selectionPolicy(record).selectable;return checkbox
   }
   if column=="entry",record.game.entries.count>1 {
    let popup=NSPopUpButton();popup.identifier=NSUserInterfaceItemIdentifier(record.game.id);popup.addItems(withTitles:record.game.entries.map{entryName($0,game:record.game)})
-   popup.selectItem(at:record.game.entries.firstIndex(of:chosen) ?? 0);popup.target=self;popup.action=#selector(entrySelected(_:));popup.isEnabled = !scanning && record.available && state == .pending;return popup
+   popup.selectItem(at:record.game.entries.firstIndex(of:chosen) ?? 0);popup.target=self;popup.action=#selector(entrySelected(_:));popup.isEnabled = selectionPolicy(record).shareable;return popup
   }
   let value:String
   switch column {
@@ -164,15 +166,15 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
   }
   let text=NSTextField(labelWithString:value);text.font = .systemFont(ofSize:13,weight:column=="title" ? .medium:.regular);text.lineBreakMode = .byTruncatingMiddle;text.toolTip=record.game.relativePath;text.textColor=record.available ? .labelColor:.secondaryLabelColor;return text
  }
- @objc private func checkedChanged(_ button:NSButton){guard let id=button.identifier?.rawValue else{return};if button.state == .on{checked.insert(id)}else{checked.remove(id)};updateSelection()}
+ @objc private func checkedChanged(_ button:NSButton){guard let id=button.identifier?.rawValue,let record=records.first(where:{$0.game.id==id}),selectionPolicy(record).selectable else{return};if button.state == .on{checked.insert(id)}else{checked.remove(id)};updateSelection()}
  @objc private func entrySelected(_ popup:NSPopUpButton){
-  guard !scanning,let id=popup.identifier?.rawValue,let record=records.first(where:{$0.game.id==id}),record.game.entries.indices.contains(popup.indexOfSelectedItem) else{return}
+  guard !scanning,let id=popup.identifier?.rawValue,let record=records.first(where:{$0.game.id==id}),record.game.entries.indices.contains(popup.indexOfSelectedItem),selectionPolicy(record).shareable else{return}
   do{try store.select(id,entry:record.game.entries[popup.indexOfSelectedItem]);reloadRows()}catch{status.stringValue=error.localizedDescription}
  }
  private func addSelected(){
   guard let app,let source,!scanning,!app.busy,state == .pending else{return}
   var count=0,errors:[String]=[],added:[Game]=[],previous=Set(app.store.games.map(\.id))
-  for record in records where checked.contains(record.game.id) && record.available && record.status == .pending {
+  for record in records where checked.contains(record.game.id) && selectionPolicy(record).importable {
    do{
     let chosen=entry(record),folder=URL(fileURLWithPath:source.path).appendingPathComponent(record.game.relativePath)
     var game=try app.store.add(source:folder,candidate:chosen)
@@ -186,14 +188,14 @@ final class DiscoveryWindowController:NSWindowController,NSWindowDelegate,NSTabl
  }
  private func shareSelected(){
   guard !scanning,!sharing,let app,!app.busy,let source else{return}
-  let selected=records.filter{checked.contains($0.game.id) && $0.available}
-  guard !selected.isEmpty else{return};sharing=true;updateSelection();status.stringValue="正在准备共享…"
-  app.shareScanned(selected,source:source){[weak self] message in guard let self,!self.closed else{return};self.sharing=false;self.status.stringValue=message;self.updateSelection()}
+  let selected=records.filter{checked.contains($0.game.id) && selectionPolicy($0).shareable}
+  guard !selected.isEmpty else{return};sharing=true;table.reloadData();updateSelection();status.stringValue="正在准备共享…"
+  app.shareScanned(selected,source:source){[weak self] message in guard let self,!self.closed else{return};self.sharing=false;self.table.reloadData();self.status.stringValue=message;self.updateSelection()}
  }
  private func ignoreSelected(){
   guard !scanning else{return}
   do{
-   for record in records where checked.contains(record.game.id) && record.status != .added{if state == .ignored{try store.restore(record.game.id)}else{try store.ignore(record.game.id)}}
+   for record in records where checked.contains(record.game.id) && (selectionPolicy(record).ignorable || selectionPolicy(record).restorable){if state == .ignored{try store.restore(record.game.id)}else{try store.ignore(record.game.id)}}
    checked=[];reloadRows();status.stringValue=state == .ignored ? "已恢复所选项目":"已忽略所选项目"
   }catch{status.stringValue=error.localizedDescription}
  }

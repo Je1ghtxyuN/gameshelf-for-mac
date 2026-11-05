@@ -2,10 +2,64 @@
 import hashlib
 import hmac
 import json
+import os
+import re
+import stat
 from pathlib import Path
 import secrets
 from .common import APIError, locked, text
 from .accounts import fields, utf8_text
+
+def _entry_sha256(folder, selected):
+    """Bounded full-file proof; no writes, no symlinks, no authority lock."""
+    entry = selected['path']
+    target = folder if entry == '.' else folder/entry
+    if selected['backend'] == 'native' and target.suffix.lower() == '.app':
+        parts = (() if entry == '.' else Path(entry).parts) + ('Contents', 'Info.plist')
+        limit = 1024 * 1024
+    else:
+        parts = Path(entry).parts
+        limit = 128 * 1024 * 1024
+    descriptor = None
+    file = None
+    try:
+        descriptor = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        # Reopen ancestors relative to descriptors; resolving a link and then
+        # inspecting its target would not meet the no-follow contract.
+        for part in folder.parts[1:] + parts[:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        if not parts:
+            raise APIError(400, 'Entry fingerprint requires a regular file')
+        file = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=descriptor)
+        before = os.fstat(file)
+        if not stat.S_ISREG(before.st_mode) or not 0 <= before.st_size <= limit:
+            raise APIError(400, 'Entry fingerprint file type or size is unsupported')
+        digest = hashlib.sha256()
+        count = 0
+        while True:
+            block = os.read(file, min(1024 * 1024, limit + 1 - count))
+            if not block:
+                break
+            count += len(block)
+            if count > limit:
+                raise APIError(400, 'Entry fingerprint file exceeds its limit')
+            digest.update(block)
+        after = os.fstat(file)
+        identity = lambda st: (st.st_dev, st.st_ino, st.st_mode, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+        named = os.stat(parts[-1], dir_fd=descriptor, follow_symlinks=False)
+        if count != before.st_size or identity(before) != identity(after) or identity(before) != identity(named):
+            raise APIError(412, 'Entry changed during fingerprint verification')
+        return digest.hexdigest()
+    except OSError:
+        raise APIError(400, 'Entry fingerprint cannot read a regular unlinked file') from None
+    finally:
+        if file is not None:
+            os.close(file)
+        if descriptor is not None:
+            os.close(descriptor)
+
 
 class SharedWorkflow:
     @locked
@@ -43,13 +97,16 @@ class SharedWorkflow:
         if not isinstance(games,list) or not 1<=len(games)<=200: raise APIError(400,'Select 1 to 200 games')
         parsed=[]
         for game in games:
-            fields(game,('relative','entryPath'))
+            fields(game,('relative','entryPath'),('entrySHA256',))
             relative=text(game['relative'],4096);entry=text(game['entryPath'],4096)
             for value in (relative,entry):
                 if value!='.' and (Path(value).is_absolute() or '\\' in value or ':' in value or any(p in ('','..','.') for p in value.split('/'))):
                     raise APIError(400,'Expected a confined relative path')
             if relative in [p[0] for p in parsed]: raise APIError(400,'Invalid or duplicate selected game')
-            parsed.append((relative,entry))
+            fingerprint = game.get('entrySHA256')
+            if 'entrySHA256' in game and (not isinstance(fingerprint,str) or not re.fullmatch(r'[0-9a-f]{64}',fingerprint)):
+                raise APIError(400,'entrySHA256 must be 64 lowercase hexadecimal characters')
+            parsed.append((relative,entry,fingerprint))
         if not self.scan_lock.acquire(blocking=False): raise APIError(409,'Another scan is running')
         try:
             authorize();root=self._root(root_id)
@@ -57,7 +114,7 @@ class SharedWorkflow:
             from .discovery import discover
             from .privacy import detect_rules
             records=[]
-            for relative,entry in parsed:
+            for relative,entry,fingerprint in parsed:
                 folder=clean_path(root/relative)
                 if folder!=root and root not in folder.parents: raise APIError(400,'Game escapes configured root')
                 if not folder.is_dir(): raise APIError(404,'Selected game is unavailable on this server')
@@ -70,7 +127,10 @@ class SharedWorkflow:
                         known=('Contents/Resources/autorun/renpy','Contents/Resources/renpy','Contents/Resources/app/renpy')
                         app_engine='renpy' if any((folder/p).is_dir() for p in known) else 'macOS'
                         entries=[dict(path='.',backend='native',engine=app_engine)]
-                    if not any(e['path']==entry for e in entries): raise APIError(400,'Selected entry is not a game launcher on this server')
+                    selected = next((e for e in entries if e['path']==entry), None)
+                    if selected is None: raise APIError(400,'Selected entry is not a game launcher on this server')
+                    if fingerprint is not None and not hmac.compare_digest(_entry_sha256(folder,selected),fingerprint):
+                        raise APIError(412,'Selected entry fingerprint does not match')
                     entries.sort(key=lambda value:value['path']!=entry)
                     title=folder.parent.name if folder.name.lower() in {'windows','win','win32','win64','pc','mac','macos','osx'} else folder.name
                     records.append((relative,title,json.dumps(entries),tree_signature(folder),json.dumps(detect_rules(folder))))
@@ -86,5 +146,6 @@ class SharedWorkflow:
                         self.db.execute('''INSERT INTO candidates(id,root_id,relative,title,entries,signature,available,save_paths) VALUES (?,?,?,?,?,?,1,?) ON CONFLICT(root_id,relative) DO UPDATE SET title=excluded.title,entries=excluded.entries,signature=excluded.signature,available=1,save_paths=excluded.save_paths''',(key,root_id,relative,title,entries,signature,saves))
                     self.db.execute('COMMIT')
                 except BaseException:self.db.execute('ROLLBACK');raise
-                return dict(candidates=[r for r in self.candidates() if r['id'] in ids])
+                return dict(candidates=[r for r in self.candidates() if r['id'] in ids],
+                            entryFingerprintsVerified=all(fingerprint is not None for _,_,fingerprint in parsed))
         finally:self.scan_lock.release()
