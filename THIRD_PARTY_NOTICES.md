@@ -32,4 +32,4 @@ Wine is licensed under [LGPL-2.1-or-later](https://github.com/wine-mirror/wine/b
 
 ## Native Ren’Py bootstrap adaptation
 
-The native-cache adapter recognizes the pinned Ren’Py 8.3.7.25031702 bootstrap and error-reporting templates. It modifies only newly prepared runtime copies to keep bytecode and generated reports outside sealed application resources. The upstream MIT license and Tom Rothamel copyright notices remain in the adapted files; the test fixtures retain the same notices. Unknown templates are left unchanged.
+The native-cache adapter recognizes the pinned Ren’Py 8.3.7.25031702 bootstrap, error-reporting and archive-loader templates. It modifies only newly prepared runtime copies to keep bytecode and generated reports outside sealed application resources. The upstream MIT license and Tom Rothamel copyright notices remain in the adapted files; the test fixtures retain the same notices. For mounted SMB resources, a scoped read-only RPA context can handle EBADF raised solely by close; read and parse failures and all save-file writes retain their normal error behavior. Unknown templates are left unchanged.

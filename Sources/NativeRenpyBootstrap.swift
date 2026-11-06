@@ -6,7 +6,7 @@ import Darwin
 /// copied cache stage. On error discard the stage; never publish/sign it. This
 /// helper does not execute Python, sign code, or access the source application.
 enum NativeRenpyBootstrap {
- static let profileID = "renpy-8.3.7.25031702-sealed-bootstrap-v1"
+ static let profileID = "renpy-8.3.7.25031702-sealed-bootstrap-v2"
  struct Preparation {let profile:String;let changed:Bool;let patchedPaths:[String]}
  enum Failure:Error,LocalizedError {
   case unsafeStage,unsupportedTemplate,writeFailed
@@ -21,6 +21,7 @@ enum NativeRenpyBootstrap {
  // Observed pristine upstream 8.3.7.25031702 files (MIT, Tom Rothamel).
  // The complete file, not just replaceable function text, must match.
  private static let launcherHash="5a2d8e648e3f4cbdcd32cbd2bb0ba48d10de32fe14042e201a8bb7088cefad79"
+ private static let loaderHash="c1e425e2870d16b7fa1c706581d96f054b5f18e2e1c84749e450a7f7d8309815"
  private static let errorHash="dfa364e74c6bebce6612e7028b311d4f122f5b27a8c5d8542eb697192c7c8e38"
  private static let versionHash="ff16e393b9e77aa21cbf203a7c11679221775120e366c0295949139c7b4ed239"
  private static let bytecodePatch="import sys\n# GameShelf sealed bootstrap v1: prevent bytecode writes before Ren’Py imports.\nsys.dont_write_bytecode = True\n"
@@ -139,6 +140,46 @@ enum NativeRenpyBootstrap {
 
  """#
  }
+ private static let loaderHelper = #"""
+# GameShelf sealed bootstrap v2: SMB read-only RPA close workaround.
+# The app sets 1 only after checking the actual resolved game-resource volume.
+class _GameShelfSMBReadOnlyRPA(object):
+    def __init__(self, stream):
+        self.stream = stream
+        self.enabled = False
+
+    def __enter__(self):
+        stream = self.stream.__enter__()
+        self.enabled = (os.environ.get("GAMESHELF_SMB_RPA_CLOSE") == "1"
+                        and getattr(self.stream, "mode", None) == "rb"
+                        and isinstance(getattr(self.stream, "name", None), str)
+                        and self.stream.name.lower().endswith(".rpa"))
+        return stream
+
+    def __exit__(self, exc_type, exc_value, tb):
+        if not self.enabled:
+            return self.stream.__exit__(exc_type, exc_value, tb)
+        try:
+            self.stream.close()
+        except Exception as close_error:
+            import errno
+            if isinstance(close_error, OSError) and close_error.errno == errno.EBADF:
+                return False
+            if exc_value is None:
+                raise
+            # Preserve the original body exception, traceback and any cause.
+            # Retain the distinct close failure as a diagnostic, without IO
+            # retries or another close which could affect a reused descriptor.
+            try:
+                print("GameShelf: RPA close failed while preserving body error: "
+                      + repr(close_error), file=sys.stderr)
+            except Exception:
+                pass
+        return False
+
+
+
+"""#
  private static func digest(_ data:Data)->String {SHA256.hash(data:data).map{String(format:"%02x",$0)}.joined()}
  private static func replaceOnce(_ text:String,_ old:String,_ new:String)throws->String {
   guard text.components(separatedBy:old).count==2 else{throw Failure.unsupportedTemplate}
@@ -174,7 +215,7 @@ enum NativeRenpyBootstrap {
   var st=stat();guard lstat(source.path,&st)==0,st.st_mode&S_IFMT==S_IFDIR else{return nil}
   do {
    let base="Contents/Resources/autorun/"
-   for (path,hash) in [(base+"renpy/vc_version.py",versionHash),(base+executableName+".py",launcherHash),(base+"renpy/error.py",errorHash)] {
+   for (path,hash) in [(base+"renpy/vc_version.py",versionHash),(base+executableName+".py",launcherHash),(base+"renpy/error.py",errorHash),(base+"renpy/loader.py",loaderHash)] {
     let url=try checked(source,path,mutable:false)
     guard digest(try Data(contentsOf:url))==hash else{return nil}
    }
@@ -208,13 +249,17 @@ enum NativeRenpyBootstrap {
   let base="Contents/Resources/autorun/"
   let version=try checked(root,base+"renpy/vc_version.py")
   guard digest(try Data(contentsOf:version))==versionHash else{throw Failure.unsupportedTemplate}
-  let launcherPath=base+executable+".py",errorPath=base+"renpy/error.py"
-  let launcher=try checked(root,launcherPath),error=try checked(root,errorPath)
-  let originals=try [Data(contentsOf:launcher),Data(contentsOf:error)]
-  // Preflight BOTH full files before modifying either one.
+  let launcherPath=base+executable+".py",errorPath=base+"renpy/error.py",loaderPath=base+"renpy/loader.py"
+  let launcher=try checked(root,launcherPath),error=try checked(root,errorPath),loader=try checked(root,loaderPath)
+  let originals=try [Data(contentsOf:launcher),Data(contentsOf:error),Data(contentsOf:loader)]
+  // Preflight ALL three complete templates before modifying any of them.
   let replacements=try [adapted(originals[0],expected:launcherHash,changes:[("import sys\n",bytecodePatch),(logFunction,logReplacement)]),
-                        adapted(originals[1],expected:errorHash,changes:[(errorFunction,errorReplacement)])]
-  let urls=[launcher,error],paths=[launcherPath,errorPath]
+                        adapted(originals[1],expected:errorHash,changes:[(errorFunction,errorReplacement)]),
+                        adapted(originals[2],expected:loaderHash,changes:[
+                         ("def index_archives():\n",loaderHelper+"def index_archives():\n"),
+                         ("            with f:\n","            with _GameShelfSMBReadOnlyRPA(f):\n"),
+                         ("            with open(afn, \"rb\") as f:\n","            with _GameShelfSMBReadOnlyRPA(open(afn, \"rb\")) as f:\n")])]
+  let urls=[launcher,error,loader],paths=[launcherPath,errorPath,loaderPath]
   var written:[Int]=[]
   do {
    for index in urls.indices where originals[index] != replacements[index] {

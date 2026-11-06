@@ -579,6 +579,9 @@ version = '8.3.7.25031702'
 version_name = 'Second Star to the Right'
 
 """#
+ static var loader: String {get throws {
+  try String(contentsOf:URL(fileURLWithPath:fm.currentDirectoryPath).appendingPathComponent("Tests/Fixtures/Renpy8.3.7/loader.py.fixture"),encoding:.utf8)
+ }}
  static let driver = #"""
 import sys, os, json, types, builtins, runpy, importlib
 # Model an embedded interpreter ignoring PYTHONDONTWRITEBYTECODE.
@@ -618,10 +621,200 @@ print(json.dumps({'bytecodeDisabled':sys.dont_write_bytecode,'logdir':logdir,
                   'traceback':os.path.realpath(path) if path else None,
                   'failure':failure,'attempts':attempts},ensure_ascii=False))
 """#
+ static let rpaMatrix = #"""
+import ast, contextlib, errno, hashlib, io, os, pickle, sys, types, unittest, unicodedata, zlib
+from pathlib import Path
+from unittest.mock import patch
+
+FIXTURE=Path(sys.argv[1])
+PATCHED=Path(sys.argv[2])
+BASELINE=False
+sys.argv=sys.argv[:1]
+
+class FaultFile(io.BytesIO):
+    def __init__(self,data,close_error=None,body=None,mode='rb',name='synthetic.rpa'):
+        super().__init__(data);self.mode=mode;self.name=name
+        self.close_error=close_error;self.body=body or {};self.closes=0
+    def read(self,*args):
+        if 'read' in self.body:raise self.body['read']
+        return super().read(*args)
+    def seek(self,*args):
+        if 'seek' in self.body:raise self.body['seek']
+        return super().seek(*args)
+    def close(self):
+        self.closes+=1;super().close()
+        if self.close_error:raise self.close_error
+
+class RWops:
+    calls=0
+    def __new__(cls,path,mode,base=0,length=0):
+        cls.calls+=1;return io.BytesIO(b'ABCD'[base:base+length])
+    @staticmethod
+    def from_buffer(data,name=None):return io.BytesIO(data)
+
+def packet(index=None,compressed=None):
+    header=b'RPA-3.0 %016x %08x\n'%(64,0)
+    payload=zlib.compress(pickle.dumps(index or {'synthetic.txt':[(12,3)]},protocol=2)) if compressed is None else compressed
+    return header+b'\0'*(64-len(header))+payload
+
+def module(patched=True):
+    raw=FIXTURE.read_bytes()
+    text=PATCHED.read_text() if patched else raw.decode()
+    tree=ast.parse(text)
+    names={'RPAv3ArchiveHandler','index_archives','load_from_archive','_GameShelfSMBReadOnlyRPA'}
+    selected=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef)) and n.name in names]
+    ns=dict(os=os,sys=sys,io=io,zlib=zlib,loads=pickle.loads,unicodedata=unicodedata,RWopsIO=RWops,
+            renpy=types.SimpleNamespace(config=types.SimpleNamespace(archives=['synthetic'])),
+            archives=[],old_config_archives=None,lower_map={},remote_files=[],
+            transfn=lambda x:x,cleardirfiles=lambda:None,listdirfiles=lambda:[])
+    exec(compile(ast.Module(body=selected,type_ignores=[]),'<pinned synthetic loader>','exec'),ns)
+    ns['archive_handlers']=[ns['RPAv3ArchiveHandler']]
+    return ns
+
+def invoke(site,stream,patched=True,flag='1',body_hook=None):
+    ns=module(patched);ns['open']=lambda path,mode:stream
+    if body_hook:ns.update(body_hook)
+    if site=='index':fn=ns['index_archives']
+    else:
+        ns['archives']=[('synthetic.rpa',{'synthetic.txt':[(0,2),(2,2)]})]
+        fn=lambda:ns['load_from_archive']('synthetic.txt').read()
+    with patch.dict(os.environ,{},clear=False):
+        if flag is None:os.environ.pop('GAMESHELF_SMB_RPA_CLOSE',None)
+        else:os.environ['GAMESHELF_SMB_RPA_CLOSE']=flag
+        result=fn()
+    return ns,result
+
+class CloseTests(unittest.TestCase):
+    def test_successful_body_close_ebadf(self):
+        for site in ['index','compat']:
+            with self.subTest(site=site):
+                f=FaultFile(packet() if site=='index' else b'ABCD',OSError(errno.EBADF,'synthetic close only'))
+                ns,result=invoke(site,f,patched=not BASELINE)
+                self.assertEqual(f.closes,1)
+                if site=='index':self.assertEqual(ns['archives'],[('synthetic.rpa',{'synthetic.txt':[(12,3)]})])
+                else:self.assertEqual(result,b'ABCD')
+    @unittest.skipIf(BASELINE,'red uses only the reproduced successful-body close failure')
+    def test_body_exceptions_keep_identity_despite_bad_close(self):
+        for site,operation,error in [('index','read',OSError(errno.EBADF,'body read')),
+                                     ('index','seek',OSError(errno.EIO,'body seek')),
+                                     ('compat','read',ValueError('body read')),
+                                     ('compat','seek',OSError(errno.EBADF,'body seek'))]:
+            with self.subTest(site=site,operation=operation):
+                f=FaultFile(packet() if site=='index' else b'ABCD',OSError(errno.EBADF,'close'),{operation:error})
+                try:invoke(site,f)
+                except BaseException as observed:self.assertIs(observed,error)
+                else:self.fail('body error suppressed')
+                self.assertEqual(f.closes,1)
+    @unittest.skipIf(BASELINE,'prototype matrix')
+    def test_zlib_and_pickle_errors_propagate_with_ebadf_close(self):
+        for operation,error in [('zlib',zlib.error('synthetic decompress failure')),('pickle',pickle.UnpicklingError('synthetic pickle failure'))]:
+            def fail(*args):raise error
+            hook={'zlib':types.SimpleNamespace(decompress=fail)} if operation=='zlib' else {'loads':fail}
+            f=FaultFile(packet(),OSError(errno.EBADF,'close'))
+            try:invoke('index',f,body_hook=hook)
+            except BaseException as observed:self.assertIs(observed,error)
+            else:self.fail('body error suppressed')
+            self.assertEqual(f.closes,1)
+        for compressed,kind in [(b'not zlib',zlib.error),(zlib.compress(b'not pickle'),pickle.UnpicklingError)]:
+            with self.assertRaises(kind):invoke('index',FaultFile(packet(compressed=compressed),OSError(errno.EBADF,'close')))
+    @unittest.skipIf(BASELINE,'prototype matrix')
+    def test_other_close_errors_successful_body_propagate(self):
+        for site in ['index','compat']:
+            for error in [OSError(errno.EIO,'close'),OSError(errno.EACCES,'close'),OSError('no errno'),RuntimeError('close')]:
+                with self.subTest(site=site,error=repr(error)):
+                    f=FaultFile(packet() if site=='index' else b'ABCD',error)
+                    try:invoke(site,f)
+                    except BaseException as observed:self.assertIs(observed,error)
+                    else:self.fail('non-EBADF close suppressed')
+                    self.assertEqual(f.closes,1)
+    @unittest.skipIf(BASELINE,'prototype matrix')
+    def test_body_priority_non_ebadf_close_diagnostic(self):
+        for site in ['index','compat']:
+            body=OSError(errno.EBADF,'original read');cause=ValueError('original cause');body.__cause__=cause
+            close=OSError(errno.EIO,'distinct close failure')
+            f=FaultFile(packet() if site=='index' else b'ABCD',close,{'read':body})
+            diagnostic=io.StringIO()
+            with contextlib.redirect_stderr(diagnostic):
+                try:invoke(site,f)
+                except BaseException as observed:
+                    self.assertIs(observed,body);self.assertIs(observed.__cause__,cause)
+                else:self.fail('body error replaced')
+            self.assertIn('distinct close failure',diagnostic.getvalue());self.assertEqual(f.closes,1)
+    def test_body_priority_runtime_close_diagnostic(self):
+        body=ValueError('original read');close=RuntimeError('runtime close failure')
+        f=FaultFile(packet(),close,{'read':body});diagnostic=io.StringIO()
+        with contextlib.redirect_stderr(diagnostic):
+            try:invoke('index',f)
+            except BaseException as observed:self.assertIs(observed,body)
+            else:self.fail('body error replaced')
+        self.assertIn('runtime close failure',diagnostic.getvalue());self.assertEqual(f.closes,1)
+    @unittest.skipIf(BASELINE,'prototype matrix')
+    def test_default_off_exact_flag_only(self):
+        for site in ['index','compat']:
+            for flag in [None,'0','','true','01','1 ']:
+                error=OSError(errno.EBADF,'close')
+                f=FaultFile(packet() if site=='index' else b'ABCD',error)
+                try:invoke(site,f,flag=flag)
+                except OSError as observed:self.assertIs(observed,error)
+                else:self.fail('inactive workaround suppressed close')
+                self.assertEqual(f.closes,1)
+    @unittest.skipIf(BASELINE,'prototype matrix')
+    def test_only_rb_rpa_no_write_save_or_rpi(self):
+        ns=module();cls=ns['_GameShelfSMBReadOnlyRPA']
+        for mode,name in [('wb','save.rpa'),('ab','save.rpa'),('r+b','save.rpa'),('rb','archive.rpi'),('rb','save.dat')]:
+            error=OSError(errno.EBADF,'close');f=FaultFile(b'',error,mode=mode,name=name)
+            with patch.dict(os.environ,{'GAMESHELF_SMB_RPA_CLOSE':'1'}):
+                with self.assertRaises(OSError) as caught:
+                    with cls(f):pass
+            self.assertIs(caught.exception,error);self.assertEqual(f.closes,1)
+    @unittest.skipIf(BASELINE,'prototype matrix')
+    def test_direct_sdl_path_and_all_unrelated_ast_unchanged(self):
+        before=ast.parse(FIXTURE.read_text());after=ast.parse(PATCHED.read_text())
+        normalized=ast.parse(PATCHED.read_text())
+        normalized.body=[n for n in normalized.body if not (isinstance(n,ast.ClassDef) and n.name=='_GameShelfSMBReadOnlyRPA')]
+        count=0
+        for n in ast.walk(normalized):
+            if isinstance(n,ast.withitem) and isinstance(n.context_expr,ast.Call) and isinstance(n.context_expr.func,ast.Name) and n.context_expr.func.id=='_GameShelfSMBReadOnlyRPA':
+                n.context_expr=n.context_expr.args[0];count+=1
+        self.assertEqual(count,2)
+        self.assertEqual(ast.dump(before),ast.dump(normalized),'unrelated code/write/save/SDL path changed')
+        for name in ['get_path','transfn','load','load_from_file']:
+            a=[n for n in before.body if isinstance(n,ast.FunctionDef) and n.name==name]
+            b=[n for n in after.body if isinstance(n,ast.FunctionDef) and n.name==name]
+            self.assertEqual([ast.dump(n) for n in a],[ast.dump(n) for n in b])
+        ns=module();ns['archives']=[('synthetic.rpa',{'synthetic.txt':[(0,4)]})]
+        ns['open']=lambda *a:(_ for _ in ()).throw(AssertionError('direct SDL path used Python open'))
+        RWops.calls=0
+        with patch.dict(os.environ,{'GAMESHELF_SMB_RPA_CLOSE':'1'}):self.assertEqual(ns['load_from_archive']('synthetic.txt').read(),b'ABCD')
+        self.assertEqual(RWops.calls,1)
+    @unittest.skipIf(BASELINE,'prototype matrix')
+    def test_repeated_index_and_compat_no_real_archives(self):
+        ns=module();streams=[]
+        def opened(path,mode):
+            f=FaultFile(packet(),OSError(errno.EBADF,'close'));streams.append(f);return f
+        ns['open']=opened
+        with patch.dict(os.environ,{'GAMESHELF_SMB_RPA_CLOSE':'1'}):
+            for _ in range(50):
+                ns['old_config_archives']=None;ns['index_archives']()
+                self.assertEqual(ns['archives'][0][1],{'synthetic.txt':[(12,3)]})
+            for _ in range(50):
+                f=FaultFile(b'ABCD',OSError(errno.EBADF,'close'));streams.append(f)
+                ns['archives']=[('synthetic.rpa',{'synthetic.txt':[(0,2),(2,2)]})]
+                ns['open']=lambda path,mode:f
+                self.assertEqual(ns['load_from_archive']('synthetic.txt').read(),b'ABCD')
+        self.assertEqual(len(streams),100);self.assertTrue(all(f.closes==1 for f in streams))
+    @unittest.skipIf(BASELINE,'prototype matrix')
+    def test_full_hash_fail_closed(self):
+        self.assertEqual(hashlib.sha256(FIXTURE.read_bytes()).hexdigest(),'c1e425e2870d16b7fa1c706581d96f054b5f18e2e1c84749e450a7f7d8309815')
+
+if __name__=='__main__':unittest.main(verbosity=2)
+
+"""#
  static func fixture(_ root:URL,_ suffix:String)throws->URL {
   let app=root.appendingPathComponent(".preparing-"+suffix+".app"),base=app.appendingPathComponent("Contents/Resources/autorun")
   try write(base.appendingPathComponent("NewHorizon.py"),launcher)
   try write(base.appendingPathComponent("renpy/error.py"),errorModule)
+  try write(base.appendingPathComponent("renpy/loader.py"),try loader)
   try write(base.appendingPathComponent("renpy/vc_version.py"),version)
   try write(base.appendingPathComponent("renpy/__init__.py"),"android = False\n")
   try write(base.appendingPathComponent("renpy/synthetic_module.py"),"VALUE = 42\n")
@@ -673,6 +866,18 @@ print(json.dumps({'bytecodeDisabled':sys.dont_write_bytecode,'logdir':logdir,
  static func rejects(_ action:()throws->Void)throws {
   do{try action()}catch{return};throw Failure(description:"unsafe stage accepted")
  }
+ static func rpaCloseMatrix(_ app:URL,_ root:URL)throws {
+  let script=root.appendingPathComponent("rpa-close-matrix.py");try write(script,rpaMatrix)
+  let p=Process(),done=DispatchSemaphore(value:0),out=Pipe(),err=Pipe()
+  p.executableURL=URL(fileURLWithPath:"/usr/bin/env")
+  p.arguments=["python3","-E",script.path,URL(fileURLWithPath:fm.currentDirectoryPath).appendingPathComponent("Tests/Fixtures/Renpy8.3.7/loader.py.fixture").path,app.appendingPathComponent("Contents/Resources/autorun/renpy/loader.py").path]
+  p.standardOutput=out;p.standardError=err;p.terminationHandler={_ in done.signal()};try p.run()
+  guard done.wait(timeout:.now()+10) == .success else{if p.isRunning{Darwin.kill(p.processIdentifier,SIGKILL)};throw Failure(description:"Python RPA fault matrix timeout")}
+  let output=out.fileHandleForReading.readDataToEndOfFile()+err.fileHandleForReading.readDataToEndOfFile()
+  print(String(decoding:output,as:UTF8.self))
+  try check(p.terminationStatus==0,"actual Swift-adapted loader fault matrix failed")
+  print("PASS v2 ACTUAL adapted loader: 11 fault groups, exact/default-off flag, both sites, body priority plus close diagnostics, no write/save/SDL changes, 50 index + 50 compatibility reads, close once")
+ }
  static func integration(_ root:URL)throws {
   let source=try fixture(root,"integration-source")
   let base=source.appendingPathComponent("Contents/Resources/autorun")
@@ -719,6 +924,7 @@ print(json.dumps({'bytecodeDisabled':sys.dont_write_bytecode,'logdir':logdir,
   try check(try snapshot(app)==sealed,"repeat adaptation changed files")
   let result=try exercise(app,root,log:logs.path)
   try check(result["traceback"] as? String == logs.appendingPathComponent("traceback.txt").path,"traceback ignored external RENPY_LOG_BASE")
+  try rpaCloseMatrix(app,root)
   print("PASS real Python: bytecode disabled before imports; preferred traceback external; sealed stage unchanged; profile read-only; adaptation idempotent")
   for (name,log) in [("missing",Optional<String>.none),("empty",Optional("")),("relative",Optional("relative-logs")),("bundle",Optional(app.appendingPathComponent("Contents/Resources/autorun").path))] {
    let result=try exercise(app,root,log:log)
@@ -739,7 +945,7 @@ print(json.dumps({'bytecodeDisabled':sys.dont_write_bytecode,'logdir':logdir,
   let traversal=try exercise(app,root,log:logs.path,filename:"../traceback.txt")
   try check(traversal["failure"] is String && (traversal["attempts"] as? [String])?.isEmpty==true,"unsafe error filename accepted")
   print("PASS real Python fallback matrix: missing/empty/relative/bundle/symlink log paths; invalid config.logdir; poisoned TMPDIR; failed writes and traversal never attempt relative/bundle files")
-  for target in ["NewHorizon.py","renpy/error.py","renpy/vc_version.py"] {
+  for target in ["NewHorizon.py","renpy/error.py","renpy/vc_version.py","renpy/loader.py"] {
    let unknown=try fixture(root,"unknown-"+UUID().uuidString),url=unknown.appendingPathComponent("Contents/Resources/autorun/"+target)
    try write(url,try String(contentsOf:url,encoding:.utf8)+"# modified unknown template\n")
    let before=try snapshot(unknown)

@@ -534,6 +534,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
      let saves=managedRoot.appendingPathComponent("Saves/NativeApps/"+storageID.uuidString),logs=managedRoot.appendingPathComponent("Logs/"+game.id.uuidString)
      try FileManager.default.createDirectory(at:saves,withIntermediateDirectories:true);try FileManager.default.createDirectory(at:logs,withIntermediateDirectories:true)
      arguments=["--savedir",saves.path];environment["RENPY_LOG_BASE"]=logs.path;environment["PYTHONDONTWRITEBYTECODE"]="1"
+     environment["GAMESHELF_SMB_RPA_CLOSE"]=NativeVolumePolicy.usesSMB(autorun.appendingPathComponent("game").resolvingSymlinksInPath()) ? "1":"0"
      if let language=game.nativeLanguage,!language.isEmpty{environment["RENPY_LANGUAGE"]=language}
     }else if let data=try? Data(contentsOf:plan.app.appendingPathComponent("Contents/Info.plist")),let info=try? PropertyListSerialization.propertyList(from:data,format:nil) as? [String:Any],info["CFBundleExecutable"] as? String=="Phoenixes" {
      try NativeGameSaves.preparePhoenixes(game:game,managedRoot:managedRoot,localRoot:localRoot)

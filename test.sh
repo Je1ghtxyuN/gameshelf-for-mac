@@ -29,6 +29,7 @@ run_swift NativeRenpyBootstrap Sources/Core.swift Sources/NativeAppCache.swift S
 run_swift NativeGameSaves Sources/Core.swift Sources/MZSaveMigration.swift Sources/NativeGameSaves.swift
 run_swift UnityCursorAdapter Sources/Core.swift Sources/UnityCursorAdapter.swift
 run_swift SettingsModel Sources/SettingsModel.swift
+run_swift NativeVolumePolicy Sources/NativeVolumePolicy.swift
 run_swift LibraryGridGeometry Sources/LibraryGrid.swift -framework AppKit
 run_swift PlaytimeStore Sources/PlaytimeStore.swift
 run_swift PlaytimeRecorder Sources/PlaytimeStore.swift Sources/PlaytimeRecorder.swift
