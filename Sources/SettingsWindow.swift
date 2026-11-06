@@ -72,7 +72,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
   [app?.root.path ?? "", app?.runtimeRoot.path ?? "", wineSource.path].joined(separator: "\n")
  }
  private var wineSource: URL {
-  URL(fileURLWithPath: UserDefaults.standard.string(forKey: "WineSource") ?? Wrapper.defaultSource.path)
+  let configured=URL(fileURLWithPath: UserDefaults.standard.string(forKey: "WineSource") ?? Wrapper.defaultSource.path)
+  if FileManager.default.fileExists(atPath:configured.appendingPathComponent("Contents/MacOS/wineskinlauncher").path) || Wrapper.isManagedSource(source:configured){return configured}
+  if let app,let cached=ManagedWine.displaySource(root:app.root.appendingPathComponent("Engines")){return cached}
+  return configured
  }
  private var mayChange: Bool { !closed && app != nil && app?.quitting == false && activity.canChangeLocations }
  private func refreshActivity() {
@@ -287,7 +290,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
    card("本地原生运行库", detail: "运行程序与组件缓存在本机，游戏素材仍可从 NAS 读取。此目录不是完整离线副本，也不随运行数据位置切换。", views: [path(native), actions([finder(native)])])
    add(actions([button("刷新磁盘信息") { [weak self] in self?.refreshVolumes() }]))
   case 3:
-   card("Wine / Wineskin 来源", detail: "使用本机已有的 Wineskin 应用创建独立运行副本。GameShelf 不安装 Wine 引擎。", views: [path(wineSource), actions([finder(wineSource), button("选择已有环境…", changesLocation: true) { [weak self] in self?.chooseWine() }])])
+   let source=wineSource
+   let available=Wrapper.isManagedSource(source:source) || FileManager.default.fileExists(atPath:source.appendingPathComponent("Contents/MacOS/wineskinlauncher").path)
+   var views:[NSView]=[label(available ? (Wrapper.isManagedSource(source:source) ? "已安装":"自定义环境"):"自动管理")]
+   if available{views.append(path(source));views.append(actions([finder(source)]))}
+   views.append(actions([button("选择已有环境…", changesLocation:true){[weak self] in self?.chooseWine()}]))
+   card("Wine",views:views)
   default:
    let image = NSImageView(image: NSApp.applicationIconImage ?? NSImage(size: NSSize(width: 64, height: 64)))
    image.imageScaling = .scaleProportionallyUpOrDown

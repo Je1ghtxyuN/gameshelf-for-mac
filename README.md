@@ -43,7 +43,7 @@ On first launch, choose **Local use**, **Connect to a shared library**, or **Cre
 
 1. Click **Scan games** and register a folder containing games. Local disks, external disks and mounted network folders work the same way.
 2. Scan it, tick the games you want and choose a launch entry where needed. Nothing is added automatically. **File → Add game manually** remains available for special cases.
-3. For Windows games, open **Settings** and select an existing **Wineskin `.app`** environment. Native Mac games use their own app; Ren’Py adapters use the matching engine version.
+3. Start a game. Windows games automatically prepare Wine on first play and reuse the installed engine afterwards. On Apple Silicon, GameShelf guides you through Rosetta installation if needed. An existing **Wineskin `.app`** can still be selected in **Settings**. Native Mac games use their own app; Ren’Py adapters use the matching engine version.
 4. Click **Play** on the game card. Open **⋯ → Properties** to edit its name, launch settings, files, cover, or collections.
 
 NAS games stay in their original directory. Keep the network share mounted while playing; reconnecting the same share preserves library entries. The **Download locally** action creates an offline copy.

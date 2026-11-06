@@ -15,6 +15,31 @@ import Foundation
   try fm.createDirectory(at:gameFolder,withIntermediateDirectories:true)
   try "MZ".write(to:gameFolder.appendingPathComponent("物語.exe"),atomically:true,encoding:.utf8)
   let game=Game(title:"物語",folder:gameFolder.path,originalFolder:gameFolder.path,entry:Candidate(path:"物語.exe",backend:.wine,engine:"KiriKiri"))
+  // A managed engine has no Wineskin launcher or reusable user prefix.
+  let managed=root.appendingPathComponent("Managed.app")
+  try fm.createDirectory(at:managed.appendingPathComponent("Contents/SharedSupport/wine/bin"),withIntermediateDirectories:true)
+  try fm.createDirectory(at:managed.appendingPathComponent("Contents/Frameworks"),withIntermediateDirectories:true)
+  for name in ["wine64","wineserver"] {
+   let file=managed.appendingPathComponent("Contents/SharedSupport/wine/bin/"+name)
+   try "#!/bin/sh\nexit 0\n".write(to:file,atomically:true,encoding:.utf8)
+   try fm.setAttributes([.posixPermissions:0o755],ofItemAtPath:file.path)
+  }
+  try PropertyListSerialization.data(fromPropertyList:["GameShelfManagedWine":true],format:.xml,options:0).write(to:managed.appendingPathComponent("Contents/Info.plist"))
+  let seed=managed.appendingPathComponent("Contents/SharedSupport/prefix/drive_c")
+  try fm.createDirectory(at:seed,withIntermediateDirectories:true)
+  try "must-not-inherit".write(to:seed.appendingPathComponent("seed.sav"),atomically:true,encoding:.utf8)
+  let managedDest=root.appendingPathComponent("ManagedRun.app")
+  do {
+   _ = try Wrapper.prepare(game:game,source:managed,destination:managedDest,shareEngine:true)
+  } catch {print("FAIL: managed Wine must create a clean game prefix without Wineskin: \(error)");exit(1)}
+  let managedPrefix=managedDest.appendingPathComponent("Contents/SharedSupport/prefix")
+  guard !fm.fileExists(atPath:managedPrefix.appendingPathComponent("drive_c/seed.sav").path) else{fatalError("Managed engine inherited a seed save")}
+  guard fm.fileExists(atPath:managedPrefix.appendingPathComponent("drive_c").path),
+        try fm.destinationOfSymbolicLink(atPath:managedPrefix.appendingPathComponent("dosdevices/c:").path)=="../drive_c" else{fatalError("Managed prefix layout invalid")}
+  let preserved=managedPrefix.appendingPathComponent("drive_c/progress.sav")
+  try "owner-progress".write(to:preserved,atomically:true,encoding:.utf8)
+  _ = try Wrapper.prepare(game:game,source:managed,destination:managedDest,shareEngine:true)
+  guard try String(contentsOf:preserved,encoding:.utf8)=="owner-progress" else{fatalError("Managed engine reuse replaced progress")}
   let dest=root.appendingPathComponent("Run.app")
   let result=try Wrapper.prepare(game:game,source:source,destination:dest)
   guard result==dest else{fatalError("Runtime must be isolated from source")}
@@ -51,6 +76,10 @@ import Foundation
    if try fm.destinationOfSymbolicLink(atPath:shared.appendingPathComponent(path).path) != replacement.appendingPathComponent(path).path {failures.append("engine link still targets old source: "+path)}
   }
   guard try String(contentsOf:save,encoding:.utf8)=="keep-progress" else{fatalError("Engine change replaced game saves")}
+  // Opting into a managed engine also preserves existing Wineskin progress.
+  _ = try Wrapper.prepare(game:game,source:managed,destination:shared,shareEngine:true)
+  guard try String(contentsOf:save,encoding:.utf8)=="keep-progress" else{fatalError("Managed engine switch replaced game saves")}
+  _ = try Wrapper.prepare(game:game,source:replacement,destination:shared,shareEngine:true)
   if !failures.isEmpty {for failure in failures{print("FAIL: "+failure)};exit(1)}
   // A missing replacement component must not leave a half-switched runtime.
   let incomplete=root.appendingPathComponent("Incomplete.app")

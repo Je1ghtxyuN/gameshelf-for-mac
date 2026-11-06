@@ -1,0 +1,10 @@
+{
+  "id": "wine-staging-11.21-osx64",
+  "url": "https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.21/wine-staging-11.21-osx64.tar.xz",
+  "size": 228148688,
+  "sha256": "d7bcd5abf4df27aae397a7898aef074fea4a2e0b51e0a55aa9659517bbf9d452",
+  "archiveRoot": "Wine Staging.app",
+  "winePath": "Contents/Resources/wine",
+  "minimumMacOS": "10.15",
+  "architecture": "x86_64"
+}

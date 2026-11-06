@@ -36,8 +36,10 @@ import CryptoKit
   try write(code, Data("int main(void) { return 0; }".utf8))
   for output in [main, nestedMain] {
    try fm.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
-   try command("/usr/bin/clang", [code.path, "-o", output.path])
+   let architectures = output == main ? ["-arch", "arm64", "-arch", "x86_64"] : []
+   try command("/usr/bin/clang", architectures + [code.path, "-o", output.path])
   }
+  try command("/usr/bin/lipo", [main.path, "-verify_arch", "arm64", "x86_64"])
   try command("/usr/bin/clang", ["-dynamiclib", code.path, "-o", dylib.path])
   for (app, executable, id, kind) in [(source, "engine", "fixture.original", "APPL"), (nested, "helper", "fixture.helper", "BNDL")] {
    let plist = ["CFBundleExecutable": executable, "CFBundleIdentifier": id, "CFBundleName": executable, "CFBundlePackageType": kind]
@@ -49,8 +51,29 @@ import CryptoKit
   try fm.createDirectory(at: payload, withIntermediateDirectories: true)
   let payloadCode = payload.appendingPathComponent("unsigned-payload")
   try fm.copyItem(at: main, to: payloadCode)
+  let nestedResource = nested.appendingPathComponent("Contents/Resources/note.txt")
+  try write(nestedResource, Data("nested sealed resource".utf8))
   let originals = try [main, dylib, nestedMain, payloadCode, source.appendingPathComponent("Contents/Info.plist")].map { ($0, try fingerprint($0)) }
   let game = Game(title: "Synthetic identity", folder: source.path, originalFolder: source.path, entry: Candidate(path: ".", backend: .native, engine: "macOS"))
+  // Finder/resource-fork metadata on copied runtimes must not block signing.
+  // The payload is deliberately linked outside the stage and must remain untouched.
+  let dirtyStage = base.appendingPathComponent(".preparing-metadata.app")
+  try fm.copyItem(at: source, to: dirtyStage)
+  let stagedPayload = dirtyStage.appendingPathComponent("Contents/Resources/autorun/game")
+  try fm.removeItem(at: stagedPayload)
+  try fm.createSymbolicLink(atPath: stagedPayload.path, withDestinationPath: payload.path)
+  let dirtyMain = dirtyStage.appendingPathComponent("Contents/MacOS/engine")
+  try command("/usr/bin/xattr", ["-w", "com.apple.ResourceFork", "copied metadata", dirtyMain.path])
+  try command("/usr/bin/xattr", ["-wx", "com.apple.FinderInfo", "5445585454455354000000000000000000000000000000000000000000000000", dirtyStage.path])
+  try command("/usr/bin/xattr", ["-w", "com.apple.ResourceFork", "source payload metadata", payloadCode.path])
+  try command("/usr/bin/xattr", ["-wx", "com.apple.FinderInfo", "5445585454455354000000000000000000000000000000000000000000000000", payload.path])
+  let payloadDirectoryMetadata = try command("/usr/bin/xattr", ["-px", "com.apple.FinderInfo", payload.path])
+  let payloadMetadata = try command("/usr/bin/xattr", ["-px", "com.apple.ResourceFork", payloadCode.path])
+  try NativeAppIdentity.signStaged(dirtyStage, identifier: "fixture.original", excluding: ["Contents/Resources/autorun/game"])
+  try check(!(try command("/usr/bin/xattr", [dirtyMain.path])).contains("com.apple.ResourceFork"), "copied code resource fork must be removed")
+  try check(!(try command("/usr/bin/xattr", [dirtyStage.path])).contains("com.apple.FinderInfo"), "copied bundle FinderInfo must be removed")
+  try check(try command("/usr/bin/xattr", ["-px", "com.apple.ResourceFork", payloadCode.path]) == payloadMetadata, "metadata cleanup must not traverse payload links")
+  try check(try command("/usr/bin/xattr", ["-px", "com.apple.FinderInfo", payload.path]) == payloadDirectoryMetadata, "strict verification must not clean the linked payload directory")
   let first = try NativeAppCache.prepare(game: game, root: root)
   let identifier = "local.gameshelf.native." + game.id.uuidString.lowercased()
   try command("/usr/bin/codesign", ["--verify", "--all-architectures", "-R=identifier \"" + identifier + "\"", first.app.path])
@@ -65,6 +88,30 @@ import CryptoKit
   let record = try JSONSerialization.jsonObject(with: Data(contentsOf: receipt)) as! [String: Any]
   try check(!(record["cachedSignedFingerprint"] as? String ?? "").isEmpty && !(record["signingProfile"] as? String ?? "").isEmpty, "receipt must distinguish source and signed cache")
   let cachedMain = first.app.appendingPathComponent("Contents/MacOS/engine")
+  // Separating sideband inspection must retain full root AND nested resource
+  // seals, and verification must reject dirty copied nodes without cleaning.
+  let copiedResource = first.app.appendingPathComponent("Contents/Resources/autorun/renpy/vc_version.py")
+  let copiedResourceModified = try fm.attributesOfItem(atPath: copiedResource.path)[.modificationDate] as! Date
+  try command("/usr/bin/xattr", ["-w", "com.apple.ResourceFork", "invalid copied resource metadata", copiedResource.path])
+  var metadataRejected = false
+  do { try NativeAppIdentity.verify(first.app, identifier: identifier, excluding: ["Contents/Resources/autorun/game"]) }
+  catch { metadataRejected = true }
+  try check(metadataRejected, "verification must reject copied resource sideband data")
+  try check(try command("/usr/bin/xattr", [copiedResource.path]).contains("com.apple.ResourceFork"), "verification must not clean existing cache metadata")
+  try command("/usr/bin/xattr", ["-d", "com.apple.ResourceFork", copiedResource.path])
+  try fm.setAttributes([.modificationDate: copiedResourceModified], ofItemAtPath: copiedResource.path)
+  for resource in [copiedResource, first.app.appendingPathComponent("Contents/PlugIns/Helper.bundle/Contents/Resources/note.txt")] {
+   let bytes = try Data(contentsOf: resource)
+   let modified = try fm.attributesOfItem(atPath: resource.path)[.modificationDate] as! Date
+   try Data("tampered sealed resource".utf8).write(to: resource)
+   var resourceRejected = false
+   do { try NativeAppIdentity.verify(first.app, identifier: identifier, excluding: ["Contents/Resources/autorun/game"]) }
+   catch { resourceRejected = true }
+   try check(resourceRejected, "full resource verification must reject root/nested resource tampering")
+   try bytes.write(to: resource)
+   try fm.setAttributes([.modificationDate: modified], ofItemAtPath: resource.path)
+  }
+  try NativeAppIdentity.verify(first.app, identifier: identifier, excluding: ["Contents/Resources/autorun/game"])
   let attributes = try fm.attributesOfItem(atPath: cachedMain.path)
   let receiptBytes = try Data(contentsOf: receipt)
   var reuseChecks = 0
@@ -112,6 +159,7 @@ import CryptoKit
   _ = try NativeAppCache.prepare(game: game, root: root)
   try check(try fm.attributesOfItem(atPath: cachedMain.path)[.systemFileNumber] as? NSNumber != attributes[.systemFileNumber] as? NSNumber, "signature validation must reject a changed cached plist")
   try command("/usr/bin/codesign", ["--verify", "--all-architectures", first.app.path])
+  try check(try command("/usr/bin/xattr", ["-px", "com.apple.FinderInfo", payload.path]) == payloadDirectoryMetadata, "all rebuilds must preserve linked payload directory metadata")
   let beforeSourceChange = try fm.attributesOfItem(atPath: cachedMain.path)[.systemFileNumber] as? NSNumber
   try write(source.appendingPathComponent("Contents/Resources/autorun/renpy/new.py"), Data("source change".utf8))
   let beforeRebuild = try Data(contentsOf: receipt)

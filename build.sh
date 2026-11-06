@@ -18,6 +18,7 @@ swiftc -swift-version 5 -O -module-cache-path build/module-cache -target "${arch
 for tool in prepare_rgss_dictionary.rb append_rgss3a.py migrate_mz_saves.js migrate_renpy_saves.py shared_web_storage.js; do
  cp "Tools/$tool" "$app/Contents/Resources/Tools/$tool"
 done
+cp Resources/ManagedWine.json "$app/Contents/Resources/ManagedWine.json"
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -28,8 +29,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleDisplayName</key><string>GameShelf</string>
 <key>CFBundleExecutable</key><string>GameShelf</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.1.2</string>
-<key>CFBundleVersion</key><string>31</string>
+<key>CFBundleShortVersionString</key><string>1.2.0</string>
+<key>CFBundleVersion</key><string>33</string>
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSNetworkVolumesUsageDescription</key><string>读取您导入的网络卷游戏文件夹。</string>

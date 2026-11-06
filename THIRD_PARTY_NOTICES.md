@@ -23,3 +23,9 @@ Wine、Wineskin、Ren’Py、RPG Maker、Unity、Steam、VNDB 等名称用于说
 ## Wine window helper build support
 
 `Tools/wine_window_launcher.c` is built with Zig and MinGW-w64 runtime support. The tested toolchain is Zig 0.17.1. Its accompanying Zig and MinGW-w64 notices are retained in [LICENSE-WineWindow-toolchain.txt](LICENSE-WineWindow-toolchain.txt) and included in the app bundle.
+
+## Managed Wine downloads
+
+GameShelf downloads the pinned upstream [Gcenx macOS Wine Staging 11.21](https://github.com/Gcenx/macOS_Wine_builds/releases/tag/11.21) archive on demand; it is not embedded in the client package. The artifact URL, size and SHA-256 are recorded in `Resources/ManagedWine.json`. The complete upstream app and its notices are retained under the installed engine’s `Contents/Upstream` directory.
+
+Wine is licensed under [LGPL-2.1-or-later](https://github.com/wine-mirror/wine/blob/master/LICENSE). Source and build information are available from the [upstream macOS builds repository](https://github.com/Gcenx/macOS_Wine_builds) and [Wine Staging](https://gitlab.winehq.org/wine/wine-staging). Included components retain their respective licenses. Rosetta is an Apple system component installed separately through macOS after user agreement.

@@ -40,6 +40,7 @@ enum NativeAppIdentity {
    throw failure("只能签署新创建的临时缓存。")
   }
   let plan = try inventory(app, excluding: excluding)
+  try removeCopiedFinderMetadata(plan)
   // Signing a bundle's main Mach-O by filename can still make codesign treat it
   // as its enclosing bundle. Leave each main executable for its bundle's turn,
   // after dylibs/helpers and all nested bundles are already sealed.
@@ -65,17 +66,58 @@ enum NativeAppIdentity {
  /// Read-only validation of every copied code object and the complete root seal.
  static func verify(_ app: URL, identifier: String, excluding: Set<String>) throws {
   let plan = try inventory(app, excluding: excluding)
-  for code in plan.files + plan.bundles {
-   try codesign(["--verify", "--all-architectures", "--strict=sideband", code.path])
+  try validateCopiedFinderMetadata(plan)
+  // codesign's resource sideband check opens symlink TARGETS, including the
+  // excluded NAS payload. Check copied nodes above without following links,
+  // and code sideband data separately from the complete resource seals below.
+  // --ignore-resources is confined to this extra code-only pass, never the
+  // full bundle/resource validation.
+  for code in plan.files + plan.bundles + [app] {
+   try codesign(["--verify", "--all-architectures", "--strict=sideband", "--ignore-resources", code.path])
+  }
+  for bundle in plan.bundles {
+   try codesign(["--verify", "--all-architectures", bundle.path])
   }
   // Full resource/code validation, but deliberately not strict=symlinks: known
   // payload symlinks point outside the bundle by design. inventory validates
   // all other links; NativeAppCache separately checks each payload destination.
-  try codesign(["--verify", "--all-architectures", "--strict=sideband",
+  try codesign(["--verify", "--all-architectures",
                 "-R=identifier \"" + identifier + "\"", app.path])
  }
 
- private struct Plan { let base: String; let files: [URL]; let bundles: [URL] }
+ private struct Plan { let base: String; let files: [URL]; let bundles: [URL]; let copied: [URL] }
+ private static func validateCopiedFinderMetadata(_ plan: Plan) throws {
+  for file in plan.copied {
+   var info=stat()
+   guard lstat(file.path,&info)==0,
+         [S_IFREG,S_IFDIR].contains(info.st_mode & S_IFMT),
+         try canonicalPath(file)==file.path else{throw failure("复制文件在校验前发生变化。")}
+   for name in ["com.apple.FinderInfo","com.apple.ResourceFork"] {
+    guard getxattr(file.path,name,nil,0,0,XATTR_NOFOLLOW)<0 else{throw failure("复制文件含有不允许的 Finder 元数据："+file.path)}
+    guard errno==ENOATTR || errno==ENOTSUP else{throw failure("无法校验复制文件的 Finder 元数据。")}
+   }
+  }
+ }
+ // codesign rejects these two attributes even when executable bytes are intact.
+ // Only unpublished copied nodes are touched; never recurse through payload links
+ // or clear unrelated metadata such as quarantine/provenance.
+ private static func removeCopiedFinderMetadata(_ plan: Plan) throws {
+  for file in plan.copied {
+   var info=stat()
+   guard lstat(file.path,&info)==0,
+         [S_IFREG,S_IFDIR].contains(info.st_mode & S_IFMT),
+         try canonicalPath(file)==file.path else{throw failure("复制文件在签名前发生变化。")}
+   for name in ["com.apple.FinderInfo","com.apple.ResourceFork"] {
+    let count=getxattr(file.path,name,nil,0,0,XATTR_NOFOLLOW)
+    if count<0 {
+     guard errno==ENOATTR || errno==ENOTSUP else{throw failure("无法检查复制文件的 Finder 元数据。")}
+     continue
+    }
+    guard info.st_mode & S_IFMT != S_IFREG || info.st_nlink==1 else{throw failure("不能清理具有硬链接的复制文件。")}
+    guard removexattr(file.path,name,XATTR_NOFOLLOW)==0 || errno==ENOATTR else{throw failure("无法清理复制文件的 Finder 元数据。")}
+   }
+  }
+ }
  private static func failure(_ text: String) -> LibraryError { LibraryError("本地原生缓存签名：" + text) }
  private static func canonicalPath(_ url: URL) throws -> String {
   guard let resolved = realpath(url.path, nil) else { throw failure("无法解析复制的运行库路径。") }
@@ -101,7 +143,7 @@ enum NativeAppIdentity {
    throw failure("签名对象必须是本地普通目录。")
   }
   let canonical = try canonicalPath(app)
-  var files: [URL] = [], bundles: [URL] = [], traversalError: Error?
+  var files: [URL] = [], bundles: [URL] = [], copied=[URL(fileURLWithPath:canonical),URL(fileURLWithPath:canonical).appendingPathComponent("Contents")], traversalError: Error?
   guard let walk = fm.enumerator(at: URL(fileURLWithPath: canonical).appendingPathComponent("Contents"), includingPropertiesForKeys: nil,
    errorHandler: { _, error in traversalError = error; return false }) else { throw failure("无法枚举复制的运行库。") }
   for case let file as URL in walk {
@@ -111,18 +153,22 @@ enum NativeAppIdentity {
    guard lstat(file.path, &info) == 0 else { throw failure("无法检查复制的运行库。") }
    if excluding.contains(relative) {
     guard info.st_mode & S_IFMT == S_IFLNK else { throw failure("资源必须保留为链接。") }
+    walk.skipDescendants()
     continue
    }
    switch info.st_mode & S_IFMT {
    case S_IFLNK:
+    walk.skipDescendants()
     let resolved = try canonicalPath(file)
     guard resolved.hasPrefix(canonical + "/") else { throw failure("非资源链接超出了缓存。") }
    case S_IFREG:
+    copied.append(file)
     if try isMachO(file) {
      guard info.st_nlink == 1 else { throw failure("不能签署具有硬链接的代码。") }
      files.append(file)
     }
    case S_IFDIR:
+    copied.append(file)
     if ["app", "framework", "xpc", "appex", "bundle", "plugin"].contains(file.pathExtension.lowercased()) {
      bundles.append(file)
     }
@@ -135,7 +181,7 @@ enum NativeAppIdentity {
   let deepest: (URL, URL) -> Bool = { left, right in
    left.pathComponents.count == right.pathComponents.count ? left.path < right.path : left.pathComponents.count > right.pathComponents.count
   }
-  return Plan(base: canonical, files: files.sorted(by: deepest), bundles: bundles.sorted(by: deepest))
+  return Plan(base: canonical, files: files.sorted(by: deepest), bundles: bundles.sorted(by: deepest), copied:copied)
  }
 
  private final class Output: @unchecked Sendable { var bytes = Data() }

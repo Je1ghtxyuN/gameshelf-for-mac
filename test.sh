@@ -15,6 +15,9 @@ run_swift() {
 for name in Core Storage Runtime Safety NativeEngine RTP RPGDictionary GameResourceServer; do
  run_swift "$name" Sources/Core.swift Sources/Runtime.swift Sources/NativeEngines.swift Sources/RTP.swift Sources/RPGDictionary.swift Sources/GameResourceServer.swift
 done
+run_swift ManagedWine Sources/ManagedWine.swift
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests -p test_managed_wine_install.py -q
+run_swift RosettaPreparation Sources/Core.swift Sources/RosettaPreparation.swift
 run_swift CoverArt Sources/Core.swift Sources/CoverArt.swift
 run_swift GameMetadataCatalog Sources/Core.swift Sources/CoverArt.swift Sources/GameMetadataCatalog.swift
 run_swift VerifiedGameMetadata Sources/Core.swift Sources/CoverArt.swift Sources/GameMetadataCatalog.swift Sources/VerifiedGameMetadata.swift
@@ -25,6 +28,7 @@ run_swift NativeAppIdentity Sources/Core.swift Sources/NativeAppCache.swift Sour
 run_swift NativeGameSaves Sources/Core.swift Sources/MZSaveMigration.swift Sources/NativeGameSaves.swift
 run_swift UnityCursorAdapter Sources/Core.swift Sources/UnityCursorAdapter.swift
 run_swift SettingsModel Sources/SettingsModel.swift
+run_swift LibraryGridGeometry Sources/LibraryGrid.swift -framework AppKit
 run_swift PlaytimeStore Sources/PlaytimeStore.swift
 run_swift PlaytimeRecorder Sources/PlaytimeStore.swift Sources/PlaytimeRecorder.swift
 "$node_bin" --test Tests/MZSaveMigrationTests.js Tests/MZSaveBootstrapTests.js Tests/SharedWebStorageTests.js

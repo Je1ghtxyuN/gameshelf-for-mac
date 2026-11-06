@@ -4,9 +4,19 @@ enum Wrapper {
  static var defaultSource:URL {
   FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Steambuild 32 64bit DXVK.app")
  }
+ static func isManagedSource(source:URL)->Bool {
+  let fm=FileManager.default
+  guard let data=try? Data(contentsOf:source.appendingPathComponent("Contents/Info.plist")),
+        let info=try? PropertyListSerialization.propertyList(from:data,format:nil) as? [String:Any],
+        info["GameShelfManagedWine"] as? Bool==true else{return false}
+  return ["wine64","wineserver"].allSatisfy{fm.isExecutableFile(atPath:source.appendingPathComponent("Contents/SharedSupport/wine/bin/"+$0).path)}
+ }
  static func prepare(game:Game,source:URL,destination:URL,shareEngine:Bool=false,freshPrefix:Bool=false) throws -> URL {
   try EntryPolicy.validate(game.entry)
   let fm=FileManager.default
+  let managed=isManagedSource(source:source)
+  let emptyPrefix=freshPrefix || managed
+  guard !managed || shareEngine else{throw LibraryError("托管运行环境需要独立 prefix。")}
   guard !freshPrefix || shareEngine else{throw LibraryError("全新共享环境需要独立 prefix 与共享引擎。")}
   let existed=fm.fileExists(atPath:destination.path)
   if existed && freshPrefix {
@@ -15,7 +25,7 @@ enum Wrapper {
   }
   let executable=URL(fileURLWithPath:game.folder).appendingPathComponent(game.entry.path)
   guard fm.fileExists(atPath:executable.path) else {throw LibraryError("游戏文件不可用。请连接 NAS，或在游戏菜单中重新定位。")}
-  guard fm.fileExists(atPath:source.appendingPathComponent("Contents/MacOS/wineskinlauncher").path) else {throw LibraryError("找不到 Wineskin 运行环境。请在应用设置中选择已有的 Wineskin .app。")}
+  guard managed || fm.fileExists(atPath:source.appendingPathComponent("Contents/MacOS/wineskinlauncher").path) else {throw LibraryError("找不到可用的 Wine 运行环境。")}
   let cloneRoot=destination.resolvingSymlinksInPath().standardizedFileURL.path
   let sourceRoot=source.resolvingSymlinksInPath().standardizedFileURL.path
   guard !containsPath(cloneRoot,in:sourceRoot),!containsPath(sourceRoot,in:cloneRoot) else {throw LibraryError("运行副本路径与原环境重叠。")}
@@ -40,7 +50,7 @@ enum Wrapper {
      let link=name=="wine" ? support.appendingPathComponent(name):contents.appendingPathComponent(name)
      try fm.createSymbolicLink(atPath:link.path,withDestinationPath:target.path)
     }
-    if freshPrefix {
+    if emptyPrefix {
      let prefix=support.appendingPathComponent("prefix")
      try fm.createDirectory(at:prefix.appendingPathComponent("drive_c"),withIntermediateDirectories:true)
      try fm.createDirectory(at:prefix.appendingPathComponent("dosdevices"),withIntermediateDirectories:true)
@@ -79,7 +89,7 @@ enum Wrapper {
   plist["CFBundleName"]="GameShelf Runtime"
   plist["Fullscreen"]=false;plist["Use XQuartz"]=false;plist["Debug Mode"]=true
   plist["WINEDEBUG"]="-all,+err"
-  if freshPrefix{plist["GameShelfFreshPrefix"]=true}
+  if freshPrefix || (managed && !existed){plist["GameShelfFreshPrefix"]=true}
   // Logs aid troubleshooting, but detected engine does not imply a verified playable game.
   let data=try PropertyListSerialization.data(fromPropertyList:plist,format:.xml,options:0)
   try data.write(to:plistURL,options:.atomic)

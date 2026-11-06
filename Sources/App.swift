@@ -96,6 +96,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  var statusMessage=""
  var statusHeight:NSLayoutConstraint?
  var statusSpinner:NSProgressIndicator?
+ var launchLoading:GameLoadingView?
  var busySince:Date?
  var statusTimer:Timer?
  var search=NSSearchField()
@@ -201,9 +202,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   NSLayoutConstraint.activate([categoryHeader.leadingAnchor.constraint(equalTo:side.leadingAnchor,constant:22),categoryHeader.trailingAnchor.constraint(equalTo:side.trailingAnchor,constant:-16),categoryHeader.topAnchor.constraint(equalTo:nav.bottomAnchor,constant:16),categoryHeader.heightAnchor.constraint(equalToConstant:24)])
   let categoryScroll=NSScrollView();categoryScroll.drawsBackground=false;categoryScroll.hasVerticalScroller=true;categoryScroll.autohidesScrollers=true;categoryScroll.translatesAutoresizingMaskIntoConstraints=false;side.addSubview(categoryScroll)
   NSLayoutConstraint.activate([categoryScroll.leadingAnchor.constraint(equalTo:side.leadingAnchor,constant:10),categoryScroll.trailingAnchor.constraint(equalTo:side.trailingAnchor,constant:-10),categoryScroll.topAnchor.constraint(equalTo:categoryHeader.bottomAnchor,constant:4),categoryScroll.bottomAnchor.constraint(equalTo:settings.topAnchor,constant:-12)])
-  let tree=FlippedView();categoryScroll.documentView=tree;tree.translatesAutoresizingMaskIntoConstraints=false
-  NSLayoutConstraint.activate([tree.widthAnchor.constraint(equalTo:categoryScroll.contentView.widthAnchor),tree.leadingAnchor.constraint(equalTo:categoryScroll.contentView.leadingAnchor),tree.topAnchor.constraint(equalTo:categoryScroll.contentView.topAnchor)])
-  let groups=stack([],vertical:true,spacing:3);pin(groups,to:tree)
+  let groups=LibrarySidebarView(frame:NSRect(x:0,y:0,width:categoryScroll.contentSize.width,height:0));categoryScroll.documentView=groups
   for collection in store.collections{appendCollectionRow(id:collection.id.uuidString,name:collection.name,games:store.games(inCollection:collection.id),to:groups)}
   appendCollectionRow(id:"uncategorized",name:"未分类",games:store.uncategorizedGames,to:groups)
   let main=NSView();main.wantsLayer=true;main.layer?.backgroundColor=NSColor.white.cgColor
@@ -243,18 +242,18 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   if filter.hasPrefix("game:"),let id=UUID(uuidString:String(filter.dropFirst(5))),let game=store.games.first(where:{$0.id==id}){return game.title}
   return "所有游戏"
  }
- func appendCollectionRow(id:String,name:String,games:[Game],to groups:NSStackView){
+ func appendCollectionRow(id:String,name:String,games:[Game],to groups:LibrarySidebarView){
   let collapsed=collapsedCollections.contains(id)
   let arrow=ActionButton(""){[weak self] in
    guard let self else{return};if self.collapsedCollections.contains(id){self.collapsedCollections.remove(id)}else{self.collapsedCollections.insert(id)}
    UserDefaults.standard.set(Array(self.collapsedCollections),forKey:"CollapsedCollections");self.showLibrary()
   }
-  arrow.image=NSImage(systemSymbolName:collapsed ? "chevron.right":"chevron.down",accessibilityDescription:nil);arrow.setAccessibilityLabel((collapsed ? "展开 ":"折叠 ")+name);arrow.isBordered=false;arrow.widthAnchor.constraint(equalToConstant:18).isActive=true
+  arrow.image=NSImage(systemSymbolName:collapsed ? "chevron.right":"chevron.down",accessibilityDescription:nil);arrow.setAccessibilityLabel((collapsed ? "展开 ":"折叠 ")+name);arrow.isBordered=false
   let select=ActionButton(name+"  ("+String(games.count)+")"){[weak self] in self?.filter=id;self?.search.stringValue="";self?.showLibrary()};select.font = .systemFont(ofSize:12,weight:.semibold);select.lineBreakMode = .byTruncatingTail;select.toolTip=name;select.alignment = .left;select.isBordered=false;select.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
   if filter==id{select.contentTintColor = .controlAccentColor}
-  var pieces:[NSView]=[arrow,select,NSView()]
-  if let uuid=UUID(uuidString:id){let more=ActionButton("⋯"){[weak self] in self?.manageCollection(uuid)};more.isBordered=false;more.widthAnchor.constraint(equalToConstant:22).isActive=true;more.setAccessibilityLabel("管理分类 "+name);pieces.append(more)}
-  let header=stack(pieces,spacing:2);header.heightAnchor.constraint(equalToConstant:29).isActive=true;groups.addArrangedSubview(header);header.widthAnchor.constraint(equalTo:groups.widthAnchor).isActive=true
+  var more:ActionButton?
+  if let uuid=UUID(uuidString:id){let button=ActionButton("⋯"){[weak self] in self?.manageCollection(uuid)};button.isBordered=false;button.setAccessibilityLabel("管理分类 "+name);more=button}
+  groups.appendRow(LibrarySidebarRowView(leading:arrow,body:select,trailing:more),height:29)
   guard !collapsed else{return}
   for game in games.sorted(by:{$0.title.localizedStandardCompare($1.title) == .orderedAscending}) {
    let button=ActionButton(game.title){[weak self] in self?.filter="game:"+game.id.uuidString;self?.search.stringValue="";self?.showLibrary()}
@@ -263,8 +262,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
    let icon=game.cover.flatMap{NSImage(contentsOfFile:$0)} ?? NSImage(systemSymbolName:"gamecontroller",accessibilityDescription:nil)
    icon?.size=NSSize(width:18,height:18);button.image=icon;button.toolTip=game.title;button.setAccessibilityLabel("选择游戏 "+game.title)
    if filter=="game:"+game.id.uuidString{button.contentTintColor = .controlAccentColor}
-   let indent=NSView();indent.widthAnchor.constraint(equalToConstant:24).isActive=true
-   let row=stack([indent,button],spacing:3);row.heightAnchor.constraint(equalToConstant:26).isActive=true;groups.addArrangedSubview(row);row.widthAnchor.constraint(equalTo:groups.widthAnchor).isActive=true
+   groups.appendRow(LibrarySidebarRowView(body:button,indent:27),height:26)
   }
  }
  func gameMenu(_ id:UUID)->NSMenu? {
@@ -338,9 +336,9 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   let unclassified=Set(store.uncategorizedGames.map{$0.id})
   var games=store.games.filter{(members==nil || members!.contains($0.id)) && (singleID==nil || singleID==$0.id) && (filter != "uncategorized" || unclassified.contains($0.id)) && (filter != "favorite" || $0.favorite)&&(filter != "recent" || $0.lastPlayed != nil)&&(query.isEmpty || $0.title.localizedCaseInsensitiveContains(query))}
   if filter=="recent"{games.sort{($0.lastPlayed ?? .distantPast)>($1.lastPlayed ?? .distantPast)}}else{games.sort{$0.title.localizedStandardCompare($1.title) == .orderedAscending}}
-  let doc=FlippedView();scroll.documentView=doc;doc.translatesAutoresizingMaskIntoConstraints=false
-  NSLayoutConstraint.activate([doc.widthAnchor.constraint(equalTo:scroll.contentView.widthAnchor),doc.topAnchor.constraint(equalTo:scroll.contentView.topAnchor),doc.leadingAnchor.constraint(equalTo:scroll.contentView.leadingAnchor)])
   if games.isEmpty{
+   let doc=FlippedView();scroll.documentView=doc;doc.translatesAutoresizingMaskIntoConstraints=false
+   NSLayoutConstraint.activate([doc.widthAnchor.constraint(equalTo:scroll.contentView.widthAnchor),doc.topAnchor.constraint(equalTo:scroll.contentView.topAnchor),doc.leadingAnchor.constraint(equalTo:scroll.contentView.leadingAnchor)])
    let searching = !query.isEmpty
    let welcome = filter=="all" && store.games.isEmpty && !searching
    let symbol = searching ? "magnifyingglass" : filter=="recent" ? "clock" : filter=="favorite" ? "heart" : "square.stack.3d.up"
@@ -361,28 +359,18 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
    return
   }
 
-  let rows=stack([],vertical:true,spacing:28);rows.translatesAutoresizingMaskIntoConstraints=false;doc.addSubview(rows)
-  // A fixed gutter also protects cards while overlay scrollbars are visible.
-  NSLayoutConstraint.activate([rows.leadingAnchor.constraint(equalTo:doc.leadingAnchor),rows.trailingAnchor.constraint(equalTo:doc.trailingAnchor,constant:-24),rows.topAnchor.constraint(equalTo:doc.topAnchor),rows.bottomAnchor.constraint(equalTo:doc.bottomAnchor)])
-  for start in stride(from:0,to:games.count,by:3){
-   let row=stack([],spacing:22);row.distribution = .fillEqually;row.alignment = .top
-   rows.addArrangedSubview(row);row.widthAnchor.constraint(equalTo:rows.widthAnchor).isActive=true
-   for offset in 0..<3 {
-    guard start+offset<games.count else{row.addArrangedSubview(NSView());continue}
-    let game=games[start+offset]
-    let cover=CoverButton(""){[weak self] in self?.launch(game)};cover.game=game;cover.isBordered=false;cover.toolTip="启动 "+game.title;cover.setAccessibilityLabel("启动 "+game.title)
-    cover.menuProvider={[weak self] in self?.gameMenu(game.id)}
-    if let path=game.cover {cover.coverImage=NSImage(contentsOfFile:path)}
-    cover.heightAnchor.constraint(equalTo:cover.widthAnchor,multiplier:1.32).isActive=true
-    let name=label(game.title,size:14,weight:.semibold);name.lineBreakMode = .byTruncatingTail
-    let more=ActionButton("⋯"){};more.menuProvider={[weak self] in self?.gameMenu(game.id)};more.opensMenuOnClick=true;more.setAccessibilityLabel("游戏菜单 "+game.title);more.bezelStyle = .recessed;more.widthAnchor.constraint(equalToConstant:28).isActive=true
-    let play=ActionButton("启动"){[weak self] in self?.launch(game)};play.image=NSImage(systemSymbolName:"play.fill",accessibilityDescription:nil);play.imagePosition = .imageLeading;play.toolTip="启动 "+game.title;play.setAccessibilityLabel("启动游戏 "+game.title)
-    let names=stack([name,NSView(),play,more],spacing:6);name.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
-    let time=label(playtimeText(game.id),size:11);time.textColor = .secondaryLabelColor;time.setAccessibilityLabel("游玩时长 "+game.title);playtimeLabels[game.id]=time
-    let card=stack([cover,names,time],vertical:true,spacing:8);cover.widthAnchor.constraint(equalTo:card.widthAnchor).isActive=true;names.widthAnchor.constraint(equalTo:card.widthAnchor).isActive=true;time.widthAnchor.constraint(equalTo:card.widthAnchor).isActive=true
-    row.addArrangedSubview(card)
-   }
+  var cards:[LibraryCardView]=[]
+  for game in games {
+   let cover=CoverButton(""){[weak self] in self?.launch(game)};cover.game=game;cover.isBordered=false;cover.toolTip="启动 "+game.title;cover.setAccessibilityLabel("启动 "+game.title)
+   cover.menuProvider={[weak self] in self?.gameMenu(game.id)}
+   if let path=game.cover {cover.coverImage=NSImage(contentsOfFile:path)}
+   let name=label(game.title,size:14,weight:.semibold);name.lineBreakMode = .byTruncatingTail
+   let more=ActionButton("⋯"){};more.menuProvider={[weak self] in self?.gameMenu(game.id)};more.opensMenuOnClick=true;more.setAccessibilityLabel("游戏菜单 "+game.title);more.bezelStyle = .recessed
+   let play=ActionButton("启动"){[weak self] in self?.launch(game)};play.image=NSImage(systemSymbolName:"play.fill",accessibilityDescription:nil);play.imagePosition = .imageLeading;play.toolTip="启动 "+game.title;play.setAccessibilityLabel("启动游戏 "+game.title)
+   let time=label(playtimeText(game.id),size:11);time.textColor = .secondaryLabelColor;time.setAccessibilityLabel("游玩时长 "+game.title);playtimeLabels[game.id]=time
+   cards.append(LibraryCardView(cover:cover,name:name,play:play,more:more,time:time))
   }
+  scroll.documentView=LibraryGridView(cards:cards,width:scroll.contentSize.width)
  }
  @objc func importPanel(){
   guard !busy,active==nil else{return}
@@ -437,7 +425,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
    if self.quitPromptOpen{self.deferredPreparations.append(action)}else{action()}
   }
  }
- func showStatus(_ message:String){statusMessage=message;refreshStatus()}
+ func showStatus(_ message:String){statusMessage=message;launchLoading?.update(message);refreshStatus()}
  func refreshStatus(){
   let elapsed=busySince.map{Int(Date().timeIntervalSince($0))} ?? 0
   status?.stringValue=statusMessage+(busy && elapsed>=3 ? "（已用时 \(elapsed) 秒）":"")
@@ -448,12 +436,14 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  func setBusy(_ value:Bool,_ message:String){
   if value && !busy{busySince=Date()}
   busy=value;statusMessage=message
+  launchLoading?.update(message)
+  if !value && nativeLaunching.isEmpty{finishGameLoading()}
   statusTimer?.invalidate();statusTimer=nil
   if value{let timer=Timer(timeInterval:1,repeats:true){[weak self] _ in self?.refreshStatus()};statusTimer=timer;RunLoop.main.add(timer,forMode:.common)}else{busySince=nil}
   refreshStatus()
   if !value{flushPlaytimeError()}
  }
- func errorAlert(_ error:Error){guard !quitting else{return};let a=NSAlert();a.messageText="无法完成操作";a.informativeText=error.localizedDescription;a.alertStyle = .warning;a.runModal()}
+ func errorAlert(_ error:Error){guard !quitting else{return};finishGameLoading();let a=NSAlert();a.messageText="无法完成操作";a.informativeText=error.localizedDescription;a.alertStyle = .warning;a.runModal()}
  func playtimeText(_ gameID:UUID)->String {
   guard let playtime else{return "时长记录暂不可用"}
   let seconds=playtime.totalSeconds(gameID:gameID)
@@ -497,6 +487,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   if game.shared != nil,let session=sharedSessions[game.id],session.closing || session.unmounted {
    showStatus("上一次共享会话正在关闭，请稍后再启动。");return
   }
+  beginGameLoading(game)
   if game.shared != nil,sharedSessions[game.id]==nil {launchShared(game);return}
   if game.shared != nil,[Backend.rpgmz,.web].contains(game.entry.backend) {prepareSharedWeb(game);return}
   let folder=URL(fileURLWithPath:game.folder),entry=URL(fileURLWithPath:game.folder).appendingPathComponent(game.entry.path)
@@ -516,14 +507,14 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  }
  func startNativeApplication(_ game:Game){
   if nativeLaunching.contains(game.id){showStatus("macOS 正在启动或验证此游戏，请勿重复开启。");return}
-  if let app=nativeApplications[game.id],!app.isTerminated{app.activate(options:[.activateAllWindows]);return}
+  if let app=nativeApplications[game.id],!app.isTerminated{finishGameLoading();app.activate(options:[.activateAllWindows]);return}
   let cachedApp=root.appendingPathComponent("NativeApps/"+game.id.uuidString+".app")
   let sourceApp=URL(fileURLWithPath:game.folder).appendingPathComponent(game.entry.path)
   if let existing=NativeAppIdentity.runningApplication(at:cachedApp) ?? NativeAppIdentity.runningApplication(at:sourceApp) {
    // Games can outlive the library process. Adopt the actual app rather than
    // replacing its runtime or launching a second copy after a client restart.
    nativeApplications[game.id]=existing;beginPlaytime(game.id);markPlayed(game)
-   existing.activate(options:[.activateAllWindows]);showStatus("游戏已在运行。");return
+   finishGameLoading();existing.activate(options:[.activateAllWindows]);showStatus("游戏已在运行。");return
   }
   setBusy(true,"正在准备运行环境…")
   let localRoot=root
@@ -561,13 +552,19 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  }
  func prepareWine(_ game:Game){
    if wineSessions.contains(game.id) {errorAlert(LibraryError("此游戏仍在运行，请回到游戏窗口。"));return}
+   if launchLoading==nil{beginGameLoading(game)}
    setBusy(true,"正在准备运行环境…")
-   let source=URL(fileURLWithPath:UserDefaults.standard.string(forKey:"WineSource") ?? Wrapper.defaultSource.path)
+   let configured=URL(fileURLWithPath:UserDefaults.standard.string(forKey:"WineSource") ?? Wrapper.defaultSource.path)
+   // Runtime downloads stay on this Mac, independently of a selected NAS data root.
+   let engines=root.appendingPathComponent("Engines")
    let dataRoot=runtimeDataRoot(for:game)
    guard FileManager.default.fileExists(atPath:dataRoot.path) else{setBusy(false,"");errorAlert(LibraryError("运行数据位置不可用，请确认磁盘或共享目录可访问，或在设置中重新选择。"));return}
    let destination=dataRoot.appendingPathComponent("Runtimes/"+game.id.uuidString+".app")
    DispatchQueue.global(qos:.userInitiated).async{
     do {
+     let source=try ManagedWine.resolve(configured:configured,root:engines){message in
+      self.preparationReady{self.showStatus(message)}
+     }
      // Shared resources already have a private server view. Local game-specific
      // adapters must not silently substitute an unscoped source directory.
      let cursorGame=game.shared == nil ? try UnityCursorAdapter.prepareIfEnabled(game:game,dataRoot:dataRoot):game
@@ -582,6 +579,8 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
       self.startWine(game,runtime:app,launchGame:launchGame)
 
      }
+    }catch ManagedWine.Failure.rosettaRequired {
+     self.preparationReady{self.setBusy(false,"");self.prepareRosetta(for:game)}
     }catch{self.preparationReady{self.setBusy(false,"");self.errorAlert(error)}}
    }
  }
@@ -591,7 +590,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   return NativeEngines.availableRenpyRoot(folder:URL(fileURLWithPath:game.folder),roots:engineRoots)
  }
  func startRenpy(_ game:Game){
-  if let app=nativeRunning[game.id],app.isRunning {NSRunningApplication(processIdentifier:app.processIdentifier)?.activate(options:[]);return}
+  if let app=nativeRunning[game.id],app.isRunning {finishGameLoading();NSRunningApplication(processIdentifier:app.processIdentifier)?.activate(options:[]);return}
   setBusy(true,"正在加载游戏资源…")
 
   let data:URL
@@ -690,6 +689,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   }
  }
  func playWeb(_ game:Game,entry:URL,folder:URL,hostedEntry:URL?=nil,storageID:UUID?=nil,migration:MZSaveArchive?=nil,sharedSession:SharedWebKitSession?=nil){
+  finishGameLoading()
   active=game;window.title=game.title
   let cfg=WKWebViewConfiguration();cfg.websiteDataStore=sharedSession == nil ? WKWebsiteDataStore(forIdentifier:storageID ?? game.id):WKWebsiteDataStore.nonPersistent();cfg.mediaTypesRequiringUserActionForPlayback=[]
   if let sharedSession {
@@ -810,7 +810,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   gameResourceServer?.stop();gameResourceServer=nil;sharedWebKitSession=nil;leavingWebGame=false;active=nil
   setBusy(false,"");showLibrary();if let id{releaseShared(id)}
  }
- func applicationWillTerminate(_ notification:Notification){playtimeTimer?.invalidate();playtimeOperation{try $0.endAll()};NSWorkspace.shared.notificationCenter.removeObserver(self);quitting=true;statusTimer?.invalidate();PreparationTasks.shared.cancel();pendingWebLaunch=nil;gameResourceServer?.stop();gameResourceServer=nil}
+ func applicationWillTerminate(_ notification:Notification){playtimeTimer?.invalidate();playtimeOperation{try $0.endAll()};NSWorkspace.shared.notificationCenter.removeObserver(self);quitting=true;statusTimer?.invalidate();ManagedWine.cancel();PreparationTasks.shared.cancel();pendingWebLaunch=nil;gameResourceServer?.stop();gameResourceServer=nil}
  func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply{
   if !sharedSessions.isEmpty {
    for id in sharedSessions.keys{releaseShared(id)}
@@ -827,7 +827,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
     for completion in completions{completion()}
     return .terminateCancel
    }
-   quitting=true;deferredPreparations=[];pendingWebLaunch=nil;busy=false;PreparationTasks.shared.cancel()
+   quitting=true;deferredPreparations=[];pendingWebLaunch=nil;busy=false;ManagedWine.cancel();PreparationTasks.shared.cancel()
    return .terminateNow
   }
   if active != nil{leaveGame();return active==nil ? .terminateNow:.terminateCancel}
