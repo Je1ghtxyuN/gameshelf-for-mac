@@ -23,8 +23,9 @@ run_swift GameMetadataCatalog Sources/Core.swift Sources/CoverArt.swift Sources/
 run_swift VerifiedGameMetadata Sources/Core.swift Sources/CoverArt.swift Sources/GameMetadataCatalog.swift Sources/VerifiedGameMetadata.swift
 for name in PreparationTask ImportProgress Collection Rename; do run_swift "$name" Sources/Core.swift; done
 run_swift MZSaveArchive Sources/Core.swift Sources/MZSaveMigration.swift
-run_swift NativeAppCache Sources/Core.swift Sources/NativeAppCache.swift Sources/NativeAppIdentity.swift -framework AppKit
-run_swift NativeAppIdentity Sources/Core.swift Sources/NativeAppCache.swift Sources/NativeAppIdentity.swift -framework AppKit
+run_swift NativeAppCache Sources/Core.swift Sources/NativeAppCache.swift Sources/NativeAppIdentity.swift Sources/NativeRenpyBootstrap.swift -framework AppKit
+run_swift NativeAppIdentity Sources/Core.swift Sources/NativeAppCache.swift Sources/NativeAppIdentity.swift Sources/NativeRenpyBootstrap.swift -framework AppKit
+run_swift NativeRenpyBootstrap Sources/Core.swift Sources/NativeAppCache.swift Sources/NativeAppIdentity.swift Sources/NativeRenpyBootstrap.swift -framework AppKit
 run_swift NativeGameSaves Sources/Core.swift Sources/MZSaveMigration.swift Sources/NativeGameSaves.swift
 run_swift UnityCursorAdapter Sources/Core.swift Sources/UnityCursorAdapter.swift
 run_swift SettingsModel Sources/SettingsModel.swift

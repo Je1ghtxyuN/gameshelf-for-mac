@@ -27,6 +27,7 @@ enum NativeAppCache {
   var runtimeFingerprint: String?
   var cachedSignedFingerprint: String?
   var signingProfile: String?
+  var bootstrapProfile: String?
  }
  private struct BundleInfo {
   let plist: [String: Any]
@@ -97,7 +98,8 @@ enum NativeAppCache {
   return Receipt(version: 1, id: game.id, source: source.path,
                  infoSHA256: SHA256.hash(data: info.data).map { String(format: "%02x", $0) }.joined(),
                  executableSize: size.int64Value, executableMTime: date.timeIntervalSince1970,
-                 profile: profile, payloads: payloads, runtimeFingerprint: runtimeFingerprint)
+                 profile: profile, payloads: payloads, runtimeFingerprint: runtimeFingerprint,
+                 bootstrapProfile: profile == "renpy-autorun-v1" ? NativeRenpyBootstrap.profile(source:source,executableName:info.executable.lastPathComponent):nil)
  }
  private struct RuntimeEntry: Encodable {
   let path: String
@@ -371,6 +373,11 @@ enum NativeAppCache {
    throw fail("复制期间源应用发生变化，请重试。")
   }
   var publishedReceipt = expected
+  if expected.bootstrapProfile != nil {
+   guard requiresSigning,try NativeRenpyBootstrap.prepare(stage:stage,executableName:info.executable.lastPathComponent) else {
+    throw fail("已识别的 Ren’Py 引导无法适配，未发布运行副本。")
+   }
+  }
   if requiresSigning {
    try NativeAppIdentity.signStaged(stage, identifier: bundleID, excluding: Set(payloads.map { "Contents/" + $0 }))
    let signedRuntime = try runtimeSnapshot(stage, excluding: excluded)

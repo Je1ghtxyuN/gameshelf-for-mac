@@ -29,3 +29,7 @@ Wine、Wineskin、Ren’Py、RPG Maker、Unity、Steam、VNDB 等名称用于说
 GameShelf downloads the pinned upstream [Gcenx macOS Wine Staging 11.21](https://github.com/Gcenx/macOS_Wine_builds/releases/tag/11.21) archive on demand; it is not embedded in the client package. The artifact URL, size and SHA-256 are recorded in `Resources/ManagedWine.json`. The complete upstream app and its notices are retained under the installed engine’s `Contents/Upstream` directory.
 
 Wine is licensed under [LGPL-2.1-or-later](https://github.com/wine-mirror/wine/blob/master/LICENSE). Source and build information are available from the [upstream macOS builds repository](https://github.com/Gcenx/macOS_Wine_builds) and [Wine Staging](https://gitlab.winehq.org/wine/wine-staging). Included components retain their respective licenses. Rosetta is an Apple system component installed separately through macOS after user agreement.
+
+## Native Ren’Py bootstrap adaptation
+
+The native-cache adapter recognizes the pinned Ren’Py 8.3.7.25031702 bootstrap and error-reporting templates. It modifies only newly prepared runtime copies to keep bytecode and generated reports outside sealed application resources. The upstream MIT license and Tom Rothamel copyright notices remain in the adapted files; the test fixtures retain the same notices. Unknown templates are left unchanged.
