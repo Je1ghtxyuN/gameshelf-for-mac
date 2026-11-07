@@ -9,6 +9,17 @@ import Foundation
   let record=DiscoveryRecord(game:DiscoveredGame(id:"candidate",sourceID:source.id,relativePath:"Novel",title:"Folder name",entries:[Candidate(path:"Game.exe",backend:.wine,engine:"Windows"),entry]),status:.added,selectedEntry:entry,addedGameID:game.id,available:true)
   let scanned=try SharedPublishSelection(record:record,source:source)
   precondition(scanned.folder==selected.folder && scanned.entry==selected.entry && scanned.gameID==selected.gameID)
+  let adapted=Candidate(path:"Game.exe",backend:.rpgmz,engine:"RPG Maker MZ")
+  var mzGame=game;mzGame.entry=adapted
+  let mzSelection=try SharedPublishSelection(game:mzGame)
+  precondition(mzSelection.entry==Candidate(path:"index.html",backend:.rpgmz,engine:"RPG Maker MZ"))
+  precondition(mzGame.entry==adapted && mzSelection.folder==game.originalFolder && mzSelection.gameID==game.id)
+  var mzRecord=record;mzRecord.game.entries=[adapted];mzRecord.selectedEntry=adapted
+  let mzScanned=try SharedPublishSelection(record:mzRecord,source:source)
+  precondition(mzScanned.entry==mzSelection.entry)
+  mzGame.entry=mzSelection.entry
+  let alreadyWeb=try SharedPublishSelection(game:mzGame)
+  precondition(alreadyWeb.entry==mzSelection.entry)
   var invalid=record;invalid.available=false
   do{_ = try SharedPublishSelection(record:invalid,source:source);fatalError("unavailable selection accepted")}catch{}
   invalid=record;invalid.game.entries=[Candidate(path:"custom_CN.exe",backend:.wine,engine:"Windows")];invalid.selectedEntry=nil
