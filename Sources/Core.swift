@@ -112,6 +112,7 @@ struct Game: Codable, Identifiable {
  var cover:String?=nil
  var showPerformanceHUD:Bool?=nil
  var windowSize:String?=nil
+ var wineFullscreen:Bool?=nil
  var nativeLanguage:String?=nil
  var shared:SharedGameReference?=nil
  var coverOrigin:String?=nil

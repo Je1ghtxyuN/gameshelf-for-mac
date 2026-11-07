@@ -633,8 +633,10 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  func startWine(_ game:Game,runtime:URL,launchGame:Game?=nil){
   do {
    if wineSessions.contains(game.id) {setBusy(false,"");throw LibraryError("此游戏仍在运行，请先回到游戏窗口或退出后重试。")}
-   let helper=Bundle.main.resourceURL!.appendingPathComponent("Tools/GameShelfWineWindow.exe")
-   let spec=try Wrapper.centeredLaunchSpec(game:launchGame ?? game,runtime:runtime,helper:helper)
+   if game.entry.engine=="Unity" && game.entry.path.lowercased()=="pure-onyx.exe" {
+    try PureOnyxDisplaySettings.apply(prefix:runtime.appendingPathComponent("Contents/SharedSupport/prefix"),fullscreen:game.wineFullscreen == true)
+   }
+   let spec=try Wrapper.gameWindowLaunchSpec(game:launchGame ?? game,runtime:runtime)
    let wait=try Wrapper.waitSpec(game:game,runtime:runtime)
    let logs=runtime.appendingPathComponent("Contents/SharedSupport/Logs")
    try FileManager.default.createDirectory(at:logs,withIntermediateDirectories:true)

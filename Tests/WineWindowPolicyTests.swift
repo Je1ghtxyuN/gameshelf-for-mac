@@ -16,6 +16,24 @@ import Foundation
   let native=try Wrapper.centeredLaunchSpec(game:game,runtime:root,helper:helper,nativeWindow:true)
   precondition(native.arguments==[helper.path,root.appendingPathComponent("Game.exe").path] && game.windowSize=="1280x720")
   precondition(native.environment["WINEPREFIX"]==root.appendingPathComponent("Contents/SharedSupport/prefix").path)
-  print("PASS WineWindowPolicy: explicit per-launch wrapper, unchanged env/argv/desktop, native opt-in does not mutate preferences")
+  // Old virtual-desktop preferences must not reintroduce coordinate layers.
+  for engine in ["Windows","Unity","RPG Maker VX Ace"] {
+   var candidate=game;candidate.entry.engine=engine
+   let direct=try Wrapper.gameWindowLaunchSpec(game:candidate,runtime:root)
+   precondition(direct.arguments==[root.appendingPathComponent("Game.exe").path])
+   precondition(direct.environment==native.environment && direct.directory==native.directory && direct.executable==native.executable)
+   precondition(candidate.windowSize=="1280x720")
+  }
+  let expedition=Game(title:"My Expedition",folder:root.path,originalFolder:root.path,entry:Candidate(path:"My Expedition.exe",backend:.wine,engine:"Windows"),windowSize:"1280x720")
+  let expeditionSpec=try Wrapper.gameWindowLaunchSpec(game:expedition,runtime:root)
+  precondition(expeditionSpec.arguments==[root.appendingPathComponent("My Expedition.exe").path],"virtual desktop and post-launch window move must not offset the game cursor")
+  let onyx=Game(title:"PURE ONYX",folder:root.path,originalFolder:root.path,entry:Candidate(path:"pure-onyx.exe",backend:.wine,engine:"Unity"),windowSize:"1280x720")
+  let direct=try Wrapper.gameWindowLaunchSpec(game:onyx,runtime:root)
+  precondition(direct.arguments==[root.appendingPathComponent("pure-onyx.exe").path,"-screen-fullscreen","0","-screen-width","1280","-screen-height","720"],"PURE ONYX needs a direct regular-window launch, never virtual desktop/helper")
+  var fullscreen=onyx;fullscreen.wineFullscreen=true
+  let fullSpec=try Wrapper.gameWindowLaunchSpec(game:fullscreen,runtime:root)
+  precondition(fullSpec.arguments[2]=="1","fullscreen must remain selectable")
+  precondition(onyx.windowSize=="1280x720","launch policy must not change saved game metadata")
+  print("PASS WineWindowPolicy: all engines bypass desktop/mover, preserve environment and metadata; fullscreen selectable")
  }
 }

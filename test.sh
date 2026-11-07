@@ -19,6 +19,7 @@ run_swift() {
 }
 sparkle_dir="$(python3 Tools/fetch_sparkle.py)"
 run_swift AppUpdates Sources/UpdateActivity.swift Sources/AppUpdates.swift -F "$sparkle_dir" -framework Sparkle -Xlinker -rpath -Xlinker "$sparkle_dir"
+run_swift PureOnyxDisplaySettings Sources/PureOnyxDisplaySettings.swift
 run_swift UpdateActivity Sources/UpdateActivity.swift
 run_swift WineRenderCachePolicy Sources/Core.swift Sources/Runtime.swift
 run_swift UnityInputAssetPatch Sources/Core.swift Sources/UnityInputAssetPatch.swift

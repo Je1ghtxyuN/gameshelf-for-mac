@@ -222,9 +222,13 @@ final class GamePropertiesController: NSWindowController, NSWindowDelegate {
     section("Wine 环境来源", value: UserDefaults.standard.string(forKey: "WineSource") ?? Wrapper.defaultSource.path)
     add(text("以下设置在下次启动时生效。游戏运行时，请先在游戏内保存并退出，再更改设置。", secondary: true))
     if running { add(text("游戏仍在运行，请先退出游戏。", secondary: true)) }
-    section("窗口模式",value:game.windowSize == nil ? "居中窗口":"1280×720 虚拟桌面")
-    checkbox("使用 1280×720 虚拟桌面", on: game.windowSize != nil) { [weak self] value in
-     self?.update(launchSetting: true) { $0.windowSize = value ? "1280x720" : nil }
+    if game.entry.engine=="Unity" && game.entry.path.lowercased()=="pure-onyx.exe" {
+     section("窗口模式",value:game.wineFullscreen == true ? "全屏":"普通窗口")
+     checkbox("全屏启动",on:game.wineFullscreen == true){[weak self] value in
+      self?.update(launchSetting:true){$0.wineFullscreen=value}
+     }
+    }else{
+     section("窗口模式",value:"游戏窗口")
     }
     checkbox("显示性能 HUD（帧率统计）", on: game.showPerformanceHUD == true) { [weak self] value in
      self?.update(launchSetting: true) { $0.showPerformanceHUD = value }

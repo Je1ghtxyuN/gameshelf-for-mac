@@ -34,6 +34,7 @@
     "Sources/PinnedHTTP.swift",
     "Sources/PlaytimeRecorder.swift",
     "Sources/PlaytimeStore.swift",
+    "Sources/PureOnyxDisplaySettings.swift",
     "Sources/RPGDictionary.swift",
     "Sources/RTP.swift",
     "Sources/RosettaPreparation.swift",
@@ -114,6 +115,7 @@
     "Tests/PlaytimeRecorderTests.swift",
     "Tests/PlaytimeStoreTests.swift",
     "Tests/PreparationTaskTests.swift",
+    "Tests/PureOnyxDisplaySettingsTests.swift",
     "Tests/RPGDictionaryTests.swift",
     "Tests/RTPTests.swift",
     "Tests/RenameTests.swift",
@@ -162,6 +164,7 @@
     "Resources/ManagedWine.json",
     "THIRD_PARTY_NOTICES.md",
     "build.sh",
+    "docs/WINE_WINDOW_COMPATIBILITY.md",
     "export-manifest.json",
     "package-dmg.sh",
     "test.sh"
