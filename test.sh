@@ -3,15 +3,22 @@ set -euo pipefail
 cd "$(dirname "$0")"
 for tool in swiftc python3 ruby node; do command -v "$tool" >/dev/null || { echo "Missing: $tool" >&2; exit 1; }; done
 node_bin="$(command -v node)"
+cache_test_root="$(mktemp -d /private/tmp/gameshelf-render-cache.XXXXXX)"
+trap 'rm -rf "$cache_test_root"' EXIT
+export GAMESHELF_WINE_CACHE_ROOT="$cache_test_root"
 mkdir -p build/module-cache
 run_swift() {
  local name="$1"; shift
  local sources=("$@")
+ case " $* " in *" Sources/Runtime.swift "*) sources+=(Sources/WineRenderCachePolicy.swift);; esac
+  case " $* " in *" Sources/UnityCursorAdapter.swift "*) sources+=(Sources/UnityInputAssetPatch.swift);; esac
  case " $* " in *" Sources/Core.swift "*) sources+=(Sources/VisualNovelProbe.swift);; esac
  case " $* " in *" Sources/SharedLibrary.swift "*) sources+=(Sources/PinnedHTTP.swift);; esac
  swiftc -swift-version 5 -module-cache-path build/module-cache "${sources[@]}" "Tests/${name}Tests.swift" -o "build/${name}Tests"
  "build/${name}Tests"
 }
+run_swift WineRenderCachePolicy Sources/Core.swift Sources/Runtime.swift
+run_swift UnityInputAssetPatch Sources/Core.swift Sources/UnityInputAssetPatch.swift
 for name in Core Storage Runtime Safety NativeEngine RTP RPGDictionary GameResourceServer; do
  run_swift "$name" Sources/Core.swift Sources/Runtime.swift Sources/NativeEngines.swift Sources/RTP.swift Sources/RPGDictionary.swift Sources/GameResourceServer.swift
 done

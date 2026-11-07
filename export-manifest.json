@@ -61,8 +61,10 @@
     "Sources/SharedWebSaveStore.swift",
     "Sources/SharedWineBootstrap.swift",
     "Sources/UnityCursorAdapter.swift",
+    "Sources/UnityInputAssetPatch.swift",
     "Sources/VerifiedGameMetadata.swift",
     "Sources/VisualNovelProbe.swift",
+    "Sources/WineRenderCachePolicy.swift",
     "Sources/WineWindowPolicy.swift"
   ],
   "tools": [
@@ -137,9 +139,11 @@
     "Tests/SharedWineRuntimeTests.swift",
     "Tests/StorageTests.swift",
     "Tests/UnityCursorAdapterTests.swift",
+    "Tests/UnityInputAssetPatchTests.swift",
     "Tests/VerifiedGameMetadataTests.swift",
     "Tests/VisualNovelImportTests.swift",
     "Tests/VisualNovelProbeTests.swift",
+    "Tests/WineRenderCachePolicyTests.swift",
     "Tests/WineWindowFixture.c",
     "Tests/WineWindowGeometryTests.c",
     "Tests/WineWindowPolicyTests.swift",

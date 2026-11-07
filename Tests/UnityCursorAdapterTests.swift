@@ -475,6 +475,21 @@ import Darwin
    try rejects { _ = try f.prepare(inspection: inspection) }
    try check(inode(f.destination) == before && Data(contentsOf: f.destination.appendingPathComponent(assembly)) == patched, "enumeration failures never publish partial inventory")
   }
+  test("unknown keyboard profile preserves the existing cursor adapter") { f in
+   try f.enable();_ = try f.prepare()
+   let before=try Data(contentsOf:f.destination.appendingPathComponent(assembly))
+   try f.enable(["keyboardProfile":"unsupported"])
+   try rejects {_ = try f.prepare()}
+   try check(Data(contentsOf:f.destination.appendingPathComponent(assembly))==before,"keyboard rejection preserved current")
+  }
+  test("keyboard opt-in rejects unmatched input assets without replacing current") { f in
+   try f.enable();_ = try f.prepare()
+   let before=try Data(contentsOf:f.destination.appendingPathComponent(".unity-cursor-adapter.json"))
+   try f.enable(["keyboardProfile":"cyanbrain-lj-v1"])
+   try write(f.source.appendingPathComponent("CYANBRAIN_Data/sharedassets0.assets"),Data("unknown asset".utf8))
+   try rejects {_ = try f.prepare()}
+   try check(Data(contentsOf:f.destination.appendingPathComponent(".unity-cursor-adapter.json"))==before,"bad input version preserved receipt")
+  }
   print("UnityCursorAdapter: \(count - failures)/\(count) passed")
   if failures != 0 { exit(1) }
  }

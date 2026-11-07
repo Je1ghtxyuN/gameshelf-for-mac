@@ -80,7 +80,6 @@ enum Wrapper {
   if (try? fm.destinationOfSymbolicLink(atPath:mapping.path)) != nil {try fm.removeItem(at:mapping)}
   else if fm.fileExists(atPath:mapping.path) {throw LibraryError("独立环境的 G: 已被占用，未覆盖。")}
   try fm.createSymbolicLink(atPath:mapping.path,withDestinationPath:game.folder)
-  try fm.createDirectory(at:destination.appendingPathComponent("Contents/SharedSupport/Cache"),withIntermediateDirectories:true)
   let plistURL=destination.appendingPathComponent("Contents/Info.plist")
   guard var plist=try PropertyListSerialization.propertyList(from:Data(contentsOf:plistURL),format:nil) as? [String:Any] else {throw LibraryError("运行环境配置损坏。")}
   plist["Program Name and Path"]="/windows/system32/cmd.exe"
@@ -214,13 +213,13 @@ extension Wrapper {
   // Keep classic Wine waits when MSync's Darwin name cannot represent the inode.
   return ["WINEMSYNC":msync ? "1":"0","WINEESYNC":msync ? "1":"0"]
  }
- static func launchSpec(game:Game,runtime:URL) throws -> LaunchSpec {
+ static func launchSpec(game:Game,runtime:URL,seedRenderCache:Bool=true) throws -> LaunchSpec {
   try EntryPolicy.validate(game.entry)
   let directory=URL(fileURLWithPath:game.folder)
   var environment=ProcessInfo.processInfo.environment
   environment["WINEPREFIX"]=runtime.appendingPathComponent("Contents/SharedSupport/prefix").path
   environment["DYLD_FALLBACK_LIBRARY_PATH"]=runtime.appendingPathComponent("Contents/Frameworks").path
-  environment["DXVK_STATE_CACHE_PATH"]=runtime.appendingPathComponent("Contents/SharedSupport/Cache").path
+  environment.merge(try WineRenderCachePolicy.prepare(game:game,runtime:runtime,migrateLegacy:seedRenderCache)){_,new in new}
   environment["GAMESHELF_PROFILE"]=game.showPerformanceHUD==true ? "1":"0"
   environment["DXVK_HUD"]=game.showPerformanceHUD==true ? "fps,frametimes,gpuload,compiler":"0"
   environment["WINEDEBUG"]="-all,err+all,+msgbox"
@@ -229,7 +228,6 @@ extension Wrapper {
    // Wine-side Unix helpers also receive an account-private home. Caches remain
    // local; no environment variable points them at another account's user data.
    environment["HOME"]=directory.appendingPathComponent(".gameshelf-profile/UnixHome").path
-   environment["XDG_CACHE_HOME"]=runtime.appendingPathComponent("Contents/SharedSupport/Cache/XDG").path
   }
   environment.removeValue(forKey:"GAMESHELF_WINDOW_BOUNDS")
   let prefix=runtime.appendingPathComponent("Contents/SharedSupport/prefix")
@@ -257,7 +255,7 @@ extension Wrapper {
   return spec
  }
  static func waitSpec(game:Game,runtime:URL) throws -> LaunchSpec {
-  let launch=try launchSpec(game:game,runtime:runtime)
+  let launch=try launchSpec(game:game,runtime:runtime,seedRenderCache:false)
   return LaunchSpec(executable:runtime.appendingPathComponent("Contents/SharedSupport/wine/bin/wineserver"),arguments:["-w"],directory:runtime.appendingPathComponent("Contents/SharedSupport/prefix"),environment:launch.environment)
  }
 }

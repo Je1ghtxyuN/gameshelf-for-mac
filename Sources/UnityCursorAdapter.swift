@@ -26,12 +26,14 @@ enum UnityCursorAdapter {
  }
  private static let profile = "cyanbrain-cursor-unconfined-v1"
  private static let assembly = "CYANBRAIN_Data/Managed/Assembly-CSharp.dll"
+ private static let inputAsset = "CYANBRAIN_Data/sharedassets0.assets"
  private static let marker = ".unity-cursor-adapter.json"
  private static var fm: FileManager { .default }
  private struct Configuration: Decodable {
   let profile: String
   let sourceFolder: String
   let sourceSHA256: String
+  let keyboardProfile: String?
  }
  private struct Receipt: Codable, Equatable {
   let profile: String
@@ -40,6 +42,7 @@ enum UnityCursorAdapter {
   let sourceSHA256: String
   let patchedSHA256: String
   let links: [String: String]
+  let keyboardAssetSHA256: String?
  }
 
  static func prepareIfEnabled(game: Game, dataRoot: URL) throws -> Game {
@@ -48,7 +51,7 @@ enum UnityCursorAdapter {
 
  /// Internal injectable spec for inert fixture tests; production uses the fixed
  /// shipped fingerprint, length and CIL offset through the two-argument API.
- static func prepareIfEnabled(game: Game, dataRoot: URL, spec: PatchSpec, publication: Publication = .init(), inspection: SourceInspection = .init()) throws -> Game {
+ static func prepareIfEnabled(game: Game, dataRoot: URL, spec: PatchSpec, publication: Publication = .init(), inspection: SourceInspection = .init(), keyboardOutputRoot: URL? = nil) throws -> Game {
   guard dataRoot.isFileURL else { throw failure("dataRoot must be a local file URL") }
   // standardizedFileURL rewrites /private/tmp to the symlink /tmp on macOS.
   // Inspect the supplied physical components first, without introducing aliases.
@@ -64,7 +67,7 @@ enum UnityCursorAdapter {
   do {
    let bytes = try read(configFile, limit: 16384)
    guard let fields = try JSONSerialization.jsonObject(with: bytes) as? [String: Any],
-         Set(fields.keys) == Set(["profile", "sourceFolder", "sourceSHA256"]) else {
+         (Set(fields.keys) == Set(["profile", "sourceFolder", "sourceSHA256"]) || Set(fields.keys) == Set(["profile", "sourceFolder", "sourceSHA256", "keyboardProfile"])) else {
     throw failure("invalid configuration fields")
    }
    config = try JSONDecoder().decode(Configuration.self, from: bytes)
@@ -72,6 +75,7 @@ enum UnityCursorAdapter {
   guard config.profile == profile, config.sourceSHA256 == spec.sourceSHA256 else {
    throw failure("unsupported profile or source-version in configuration")
   }
+  guard config.keyboardProfile == nil || config.keyboardProfile == "cyanbrain-lj-v1" else {throw failure("unsupported keyboard profile")}
   guard game.entry.backend == .wine, game.entry.engine == "Unity", game.entry.path == "CYANBRAIN.exe" else {
    throw failure("profile requires the CYANBRAIN.exe Wine Unity entry")
   }
@@ -107,14 +111,33 @@ enum UnityCursorAdapter {
   // Engine.Awake 060001f8 IL_0047: ldc.i4.2 -> ldc.i4.0 before Cursor.set_lockState.
   patched[spec.offset] = 0x16
 
+  let originalInput:Data?,patchedInput:Data?
+  if config.keyboardProfile != nil {
+   let bytes=try read(source.appendingPathComponent(inputAsset),limit:UnityInputAssetPatch.cyanbrain.sourceLength)
+   originalInput=bytes;patchedInput=try UnityInputAssetPatch.apply(bytes)
+  } else {originalInput=nil;patchedInput=nil}
+
   let snapshot = try inspectSource(source, inspection: inspection)
   guard snapshot.entryIsRegular else {
    throw failure("game entry must resolve to a regular file")
   }
-  let links = snapshot.links
+  var links = snapshot.links
+  if patchedInput != nil {links.removeValue(forKey:inputAsset)}
   let receipt = Receipt(profile: profile, id: game.id, source: source.path,
-                        sourceSHA256: spec.sourceSHA256, patchedSHA256: digest(patched), links: links)
-  let adapters = root.appendingPathComponent("Adapters")
+                        sourceSHA256: spec.sourceSHA256, patchedSHA256: digest(patched), links: links, keyboardAssetSHA256:patchedInput.map(digest))
+  // Modified input resources are memory-mapped by Unity. Keep this small derived
+  // overlay host-local while the original payload and existing saves stay in place.
+  let outputRoot:URL
+  if config.keyboardProfile != nil {
+   outputRoot=keyboardOutputRoot ?? fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/GameShelf/UnityInputRuns")
+   guard outputRoot.isFileURL,!contains(outputRoot,source),!contains(source,outputRoot) else {throw failure("input output/source overlap")}
+   try realAncestors(outputRoot)
+   var volume=statfs()
+   var ancestor=outputRoot
+   while try type(ancestor)==nil,ancestor.path != "/" {ancestor.deleteLastPathComponent()}
+   guard statfs(ancestor.path,&volume)==0,(volume.f_flags & UInt32(MNT_LOCAL)) != 0 else {throw failure("input output must be host-local")}
+  } else {outputRoot=root}
+  let adapters = outputRoot.appendingPathComponent("Adapters")
   let owner = adapters.appendingPathComponent(game.id.uuidString)
   let destination = owner.appendingPathComponent("current")
   try realAncestors(destination)
@@ -143,12 +166,14 @@ enum UnityCursorAdapter {
    try fm.createSymbolicLink(atPath: stage.appendingPathComponent(relative).path, withDestinationPath: target)
   }
   try patched.write(to: stage.appendingPathComponent(assembly), options: [.withoutOverwriting])
+  if let patchedInput {try patchedInput.write(to:stage.appendingPathComponent(inputAsset),options:[.withoutOverwriting])}
   let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
   try encoder.encode(receipt).write(to: stage.appendingPathComponent(marker), options: [.withoutOverwriting])
   _ = try ownedReceipt(stage, expected: receipt)
   guard try read(stage.appendingPathComponent(assembly), limit: spec.length) == patched else { throw failure("staged patch verification failed") }
   // Recheck before publish; a changed source must never silently launch stale CIL.
   guard try read(dll, limit: spec.length) == original else { throw failure("source-version: source changed during preparation") }
+  if let originalInput {guard try read(source.appendingPathComponent(inputAsset),limit:originalInput.count)==originalInput else {throw failure("input source changed during preparation")}}
   try realAncestors(destination)
   if let previous {
    guard try ownedReceipt(destination, expected: receipt) == previous else { throw failure("adapter changed during preparation") }
@@ -338,6 +363,11 @@ enum UnityCursorAdapter {
    throw failure("unrecognized adapter ownership/version")
   }
   var wanted: [String: Set<String>] = ["": [marker, "CYANBRAIN_Data"], "CYANBRAIN_Data": ["Managed"], "CYANBRAIN_Data/Managed": ["Assembly-CSharp.dll"]]
+  if let sha=receipt.keyboardAssetSHA256 {
+   guard sha==UnityInputAssetPatch.cyanbrain.outputSHA256,
+         digest(try read(directory.appendingPathComponent(inputAsset),limit:UnityInputAssetPatch.cyanbrain.outputLength))==sha else {throw failure("unrecognized or damaged keyboard asset")}
+   wanted["CYANBRAIN_Data"]!.insert("sharedassets0.assets")
+  }
   for (relative, target) in receipt.links {
    let parts = relative.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
    guard parts.allSatisfy(safeName), !relative.hasPrefix("/"), let name = parts.last else { throw failure("unsafe receipt link path") }
