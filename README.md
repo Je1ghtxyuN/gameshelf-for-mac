@@ -24,6 +24,8 @@ GameShelf brings your games into a native macOS library. Discover games in folde
 
 Open the release DMG and drag **GameShelf.app** onto the **Applications** shortcut.
 
+After installing v1.3.0 or later, use **GameShelf → Check for Updates…** or receive periodic update prompts. Updates are verified before installation and wait for active games to exit. Older clients need one manual upgrade. See [update publishing](docs/UPDATES.md) for maintainers.
+
 ## Features
 
 - **One library** — organize Windows, native macOS, visual novel, and 2D games with covers and custom collections.

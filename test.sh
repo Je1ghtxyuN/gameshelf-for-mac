@@ -17,6 +17,9 @@ run_swift() {
  swiftc -swift-version 5 -module-cache-path build/module-cache "${sources[@]}" "Tests/${name}Tests.swift" -o "build/${name}Tests"
  "build/${name}Tests"
 }
+sparkle_dir="$(python3 Tools/fetch_sparkle.py)"
+run_swift AppUpdates Sources/UpdateActivity.swift Sources/AppUpdates.swift -F "$sparkle_dir" -framework Sparkle -Xlinker -rpath -Xlinker "$sparkle_dir"
+run_swift UpdateActivity Sources/UpdateActivity.swift
 run_swift WineRenderCachePolicy Sources/Core.swift Sources/Runtime.swift
 run_swift UnityInputAssetPatch Sources/Core.swift Sources/UnityInputAssetPatch.swift
 for name in Core Storage Runtime Safety NativeEngine RTP RPGDictionary GameResourceServer; do

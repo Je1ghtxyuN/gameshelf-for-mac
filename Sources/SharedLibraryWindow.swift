@@ -35,7 +35,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
  func openLibrary(){
   accountRequested=false
   let binding=app.flatMap{try? PersonalLibraryBindingStore(root:$0.root)}?.binding
-  if let connection=SharedNavigation.preferred(connections:store.connections,boundID:binding?.connectionID){choose(connection)}
+  if let connection=SharedNavigation.preferred(connections:store.connections,boundID:binding?.connectionID,activeID:app?.sharedAccessTokens.activeConnectionID){choose(connection)}
   else{showServers()}
  }
  func openAccount(connectionID:UUID){
@@ -225,14 +225,15 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   return error.localizedDescription
  }
  private func showServers(){
-  operation=UUID();loading=false;password.stringValue="";selected=nil;server=nil;games=[];pin=nil;invitationName=nil;feedback="";feedbackIsError=false
+  operation=UUID();loading=false;password.stringValue="";username.stringValue="";selected=nil;server=nil;games=[];pin=nil;invitationName=nil;feedback="";feedbackIsError=false
   page=store.connections.isEmpty ? .address:.servers;render()
  }
  private func newServer(){showServers();address.stringValue="";page = .address;render()}
  private func choose(_ connection:SharedConnection){
   loading=false
-  operation=UUID();selected=connection;server=SharedServerInfo(name:connection.name,serverID:connection.serverID,version:"");address.stringValue=connection.address;username.stringValue=connection.username;password.stringValue="";pin=connection.certificateSHA256;feedback="";feedbackIsError=false
+  operation=UUID();selected=connection;server=SharedServerInfo(name:connection.name,serverID:connection.serverID,version:"");address.stringValue=connection.address;username.stringValue="";password.stringValue="";pin=connection.certificateSHA256;feedback="";feedbackIsError=false
   let authenticated=(try? app?.sharedToken(for:connection)) != nil
+  username.stringValue=SharedNavigation.loginUsername(connection:connection,authenticated:authenticated)
   switch SharedNavigation.destination(accountRequested:accountRequested,authenticated:authenticated){
   case .account:page = connection.isAdministrator ? .catalog:.account;loading=false;render();loadCatalog()
   case .catalog:page = .retry;render();loadCatalog()
@@ -373,7 +374,7 @@ final class SharedLibraryWindowController:NSWindowController,NSWindowDelegate,NS
   do{
    if let token=try app.sharedToken(for:connection),let client=try? SharedAPI(address:connection.address,certificateSHA256:connection.certificateSHA256){api=client;client.request("/api/logout",method:"POST",token:token){(_:Result<SharedOK,Error>) in}}
    app.sharedAccessTokens.removeValue(forKey:connection.id)
-   password.stringValue="";games=[];page = .login;feedback="";feedbackIsError=false;render()
+   password.stringValue="";username.stringValue="";games=[];page = .login;feedback="";feedbackIsError=false;render()
   }catch{status(friendly(error),error:true)}
  }
 }

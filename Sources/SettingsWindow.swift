@@ -304,7 +304,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
    let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
    var versionText = version.map { "版本 " + $0 } ?? "版本信息未提供"
    if let build { versionText += "（构建 \(build)）" }
-   card("GameShelf", detail: versionText, views: [image, label(versionText), label("macOS 15+", secondary: true)])
+   card("GameShelf", detail: versionText, views: [image, label(versionText), label("macOS 15+", secondary: true), ActionButton("检查更新…"){[weak self] in self?.app?.checkForUpdates()}])
   }
   refreshActivity()
  }

@@ -69,6 +69,7 @@ final class ShelfView:NSView {
 }
 final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigationDelegate,WKUIDelegate,WKScriptMessageHandler {
  var propertyWindows:[UUID:GamePropertiesController]=[:]
+ var updates:AppUpdates?
  var settingsWindow:SettingsWindowController?
  var discoveryWindow:DiscoveryWindowController?
  var sharedLibraryWindow:SharedLibraryWindowController?
@@ -144,6 +145,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   let profileTimer=Timer(timeInterval:60,repeats:true){[weak self] _ in self?.syncPersonalLibrary()}
   personalLibraryTimer=profileTimer;RunLoop.main.add(profileTimer,forMode:.common)
   syncPersonalLibrary()
+  updates=AppUpdates(app:self)
   let workspace=NSWorkspace.shared.notificationCenter
   workspace.addObserver(self,selector:#selector(playtimeWillSleep),name:NSWorkspace.willSleepNotification,object:nil)
   workspace.addObserver(self,selector:#selector(playtimeDidWake),name:NSWorkspace.didWakeNotification,object:nil)
@@ -155,6 +157,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
   let menu=NSMenu();NSApp.mainMenu=menu
   let appItem=NSMenuItem();menu.addItem(appItem);let a=NSMenu();appItem.submenu=a
   a.addItem(withTitle:"关于 游戏库",action:#selector(about),keyEquivalent:"").target=self
+  a.addItem(withTitle:"检查更新…",action:#selector(checkForUpdates),keyEquivalent:"").target=self
   a.addItem(withTitle:"设置…",action:#selector(settings),keyEquivalent:",").target=self
   a.addItem(.separator());a.addItem(withTitle:"退出 游戏库",action:#selector(NSApplication.terminate(_:)),keyEquivalent:"q")
   let file=NSMenuItem();menu.addItem(file);let f=NSMenu(title:"文件");file.submenu=f
@@ -483,6 +486,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  }
  func markPlayed(_ game:Game){guard store.games.contains(where:{$0.id==game.id}) else{return};do{try store.recordPlayed(game.id)}catch{errorAlert(error)}}
  func launch(_ game:Game){
+  guard updates?.installationRequested != true else{showStatus("更新正在等待安装，请稍后启动游戏。");return}
   guard !busy,active==nil else{return}
   if game.shared != nil,let session=sharedSessions[game.id],session.closing || session.unmounted {
    showStatus("上一次共享会话正在关闭，请稍后再启动。");return
@@ -813,6 +817,7 @@ final class App:NSObject,NSApplicationDelegate,NSSearchFieldDelegate,WKNavigatio
  }
  func applicationWillTerminate(_ notification:Notification){playtimeTimer?.invalidate();playtimeOperation{try $0.endAll()};NSWorkspace.shared.notificationCenter.removeObserver(self);quitting=true;statusTimer?.invalidate();ManagedWine.cancel();PreparationTasks.shared.cancel();pendingWebLaunch=nil;gameResourceServer?.stop();gameResourceServer=nil}
  func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply{
+  if updates?.installationRequested==true && !updateActivity.canInstall{return .terminateCancel}
   if !sharedSessions.isEmpty {
    for id in sharedSessions.keys{releaseShared(id)}
    let alert=NSAlert();alert.messageText="共享游戏会话尚未关闭";alert.informativeText="请先在游戏内保存退出。GameShelf 会刷新网络写入并关闭个人会话后再退出，避免存档写入中断。";alert.addButton(withTitle:"返回游戏库");alert.runModal();return .terminateCancel
